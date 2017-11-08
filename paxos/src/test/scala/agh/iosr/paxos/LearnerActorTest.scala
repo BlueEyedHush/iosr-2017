@@ -35,8 +35,9 @@ class LearnerActorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       val actor = system.actorOf(Props(new LearnerActor(discovery)))
       val subactor1 = system.actorOf(Props(new LearnerActor(discovery)))
       val subactor2 = system.actorOf(Props(new LearnerActor(discovery)))
-      actor ! KvsGetRequest("GimmeKeys")
-      expectMsg(KvsGetResponse(Some(3)))
+      actor ! ValueLearned(10, "someKey", 6)
+      actor ! KvsGetRequest("someKey")
+      expectMsg(KvsGetResponse(Some(6)))
     }
   }
 }

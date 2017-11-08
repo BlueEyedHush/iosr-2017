@@ -45,6 +45,31 @@ class LearnerActor(discovery:ActorRef) extends Actor {
       import scala.concurrent.ExecutionContext.Implicits.global
       context.system.scheduler.scheduleOnce(1 seconds, self, LearnerLoopback(resp.requestKey))
     case req:LearnerLoopback =>
-      getRequests.get(req.requestKey).get._1 ! KvsGetResponse(Option(3))
+      var propsFromMap = getRequests.get(req.requestKey)
+      propsFromMap match {
+        case Some(_) =>
+          var props = propsFromMap.get
+          var currentMaxInst = -1
+          var currentValue = -1
+          for (t <- props._3) {
+            t match {
+            case Some(_) =>
+              var i = t.get._1
+              var v = t.get._2
+              if (i > currentMaxInst) {
+                currentMaxInst = i
+                currentValue = v
+              }
+            case None =>
+
+            }
+          }
+          if (currentMaxInst != -1)
+            props._1 ! KvsGetResponse(Option(currentValue))
+          else
+            props._1 ! KvsGetResponse(None)
+        case None =>
+          
+      }
   }
 }
