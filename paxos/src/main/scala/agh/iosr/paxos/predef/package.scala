@@ -1,11 +1,5 @@
 package agh.iosr.paxos
 
-import java.util.regex.Pattern
-
-import akka.actor.Status.Success
-
-import scala.util.{Failure, Try}
-
 package object predef {
   type InstanceId = Int
 
@@ -15,7 +9,9 @@ package object predef {
   type RoundId = Int
   val NULL_ROUND = -1
 
-
+  /**
+    * NodeId's are global across the cluster, but this guarantee relies on uniform order in config
+    */
   type NodeId = Int
   val NULL_NODE_ID = -1
 }
