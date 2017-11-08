@@ -1,14 +1,13 @@
 package agh.iosr.paxos
 
 import agh.iosr.paxos.predef.IpAddress
-import akka.actor.ActorSystem
-import akka.testkit.{ImplicitSender, TestKit}
 import com.typesafe.config.ConfigFactory
-import org.scalatest.{FreeSpecLike, Matchers}
+import org.scalatest.{FreeSpec, Matchers}
 
 import scala.collection._
 
-class ClusterInfoTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender with FreeSpecLike with Matchers {
+class ClusterInfoTest extends FreeSpec with Matchers {
+
   object correct {
     val myIp = IpAddress("127.0.0.1", 2551)
     val clusterMembers = List(
@@ -29,14 +28,24 @@ class ClusterInfoTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
 
 
   "ClusterInfo" - {
-    "should return values matching those from file" in {
+    implicit val c = ConfigFactory.load("cluster-info-test.conf")
+
+    "should return values matching those from file" - {
       import correct._
 
-      implicit val c = ConfigFactory.load("cluster-info-test.conf")
-      val actor = system.actorOf(ClusterInfo.props())
+      "for myIp" in {
+        val actualIp = ClusterInfo.myIpFromConf()
+        actualIp shouldBe myIp
+      }
 
-      actor ! GetInfo
-      expectMsg(NodeInfo(myIp, ipToId, idToIp))
+      "for nodeMapping" in {
+        val (actualIpToId, actualIdToIp) = ClusterInfo.nodeMapsFromConf()
+        actualIdToIp shouldBe idToIp
+        actualIpToId shouldBe ipToId
+      }
+
     }
+
+
   }
 }

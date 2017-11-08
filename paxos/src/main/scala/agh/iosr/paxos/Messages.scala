@@ -1,5 +1,7 @@
 package agh.iosr.paxos
 
+import java.net.InetSocketAddress
+
 trait SendableMessage
 
 object Messages {

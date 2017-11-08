@@ -2,41 +2,21 @@ package agh.iosr.paxos
 
 
 import agh.iosr.paxos.predef._
-import akka.actor.{Actor, Props}
 import com.typesafe.config.Config
 
 import scala.collection.JavaConverters._
 import scala.collection._
 import scala.util.{Failure, Success}
 
-case object GetInfo
-case class NodeInfo(myIp: IpAddress,
-                    ipToId: IpToIdMap,
-                    idToIp: IdToIpMap)
-
 object ClusterInfo {
-  def props()(implicit config: Config) = Props(new ClusterInfo())
-}
-
-class ClusterInfo()(implicit config: Config) extends Actor {
-  private val myIp = myIpFromConf()
-  private val (ipToId, idToIp) = nodeMapsFromConf()
-  
-  override def receive = {
-    case GetInfo =>
-      sender ! NodeInfo(myIp, ipToId, idToIp)
-  }
-
-
-
-  private def myIpFromConf(): IpAddress = {
+  def myIpFromConf()(implicit config: Config): IpAddress = {
     IpAddress.fromString(config.getString("iosrPaxos.myAddress")) match {
       case Success(ip) => ip
       case Failure(t) => throw ConfigError
     }
   }
 
-  private def nodeMapsFromConf(): (IpToIdMap, IdToIpMap) = {
+  def nodeMapsFromConf()(implicit config: Config): (IpToIdMap, IdToIpMap) = {
     val mapBuilder = immutable.Map.newBuilder[IpAddress, NodeId]
 
     val convIp = config.getStringList("iosrPaxos.nodes")
