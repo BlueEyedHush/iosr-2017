@@ -21,4 +21,6 @@ package object predef {
 
   type IdToIpMap = immutable.Map[NodeId, IpAddress]
   type IpToIdMap = immutable.Map[IpAddress, NodeId]
+
+  case class MessageOwner(instanceId: InstanceId, roundId: RoundId)
 }

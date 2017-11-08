@@ -1,13 +1,11 @@
 package agh.iosr.paxos
 
-import java.net.InetSocketAddress
-
 trait SendableMessage
 
 object Messages {
   import agh.iosr.paxos.predef._
 
-  case class MessageOwner(instanceId: InstanceId, roundId: RoundId)
+
 
   case class KvsSend(key: String, value: Value)
   case class KvsGetRequest(key: String)
@@ -25,10 +23,6 @@ object Messages {
 
   case class LearnerSubscribe()
   case class ValueLearned(when: InstanceId, key: String, value: Value)
-
-  case class SendUnicast(data: SendableMessage, remote: InetSocketAddress)
-  case class SendMulticast(data: SendableMessage, destination: String)
-  case class ReceivedMessage(data: SendableMessage, remote: InetSocketAddress)
 }
 
 

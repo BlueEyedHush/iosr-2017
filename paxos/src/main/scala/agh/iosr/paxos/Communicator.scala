@@ -1,9 +1,14 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.Messages.{ReceivedMessage, SendMulticast, SendUnicast}
+import java.net.InetSocketAddress
+
 import agh.iosr.paxos.predef.{IdToIpMap, IpAddress, IpToIdMap}
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.{IO, Udp}
+
+case class SendUnicast(data: SendableMessage, remote: InetSocketAddress)
+case class SendMulticast(data: SendableMessage, destination: String)
+case class ReceivedMessage(data: SendableMessage, remote: InetSocketAddress)
 
 object Communicator {
   def props(master: ActorRef, me: IpAddress, ipToId: IpToIdMap, idToIpMap: IdToIpMap): Props =
