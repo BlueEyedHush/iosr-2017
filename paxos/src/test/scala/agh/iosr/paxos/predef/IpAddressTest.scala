@@ -1,63 +1,43 @@
 package agh.iosr.paxos.predef
 
+import org.scalatest.prop.TableDrivenPropertyChecks
 import org.scalatest.{FreeSpec, Matchers}
 
-class IpAddressTest extends FreeSpec with Matchers {
+class IpAddressTest extends FreeSpec with TableDrivenPropertyChecks with Matchers {
+  val correctIps = Table(
+    ("input", "expectedIp", "expectedPort"),
+    ("192.168.112.211:1", "192.168.112.211", 1),
+    ("1.2.3.4:1", "1.2.3.4", 1),
+  )
+
+  val incorrectIps = Table(
+    ("ipAddress", "cause"),
+    ("1.2.3:12", "missing octet"),
+    ("192.168.112.24", "missing port"),
+    ("192.168.112.24:", "port empty"),
+  )
+
   "An IpAddress.fromString" - {
-    "for IP (4x3,1)" - {
-      val r = IpAddress.fromString("192.168.112.211:1")
+    "should succeed" - {
+      forAll(correctIps) { (in, eip, ep) => {
+        val r = IpAddress.fromString(in)
 
-      "should succeed" in {
-        assert(r.isSuccess)
+        r.isSuccess shouldBe true
+        r.get.ip shouldBe eip
+        r.get.port shouldBe ep
+
       }
-
-      "should return correct IP" in {
-        r.get.ip shouldBe "192.168.112.211"
-      }
-
-      "should return correct port" in {
-        r.get.port shouldBe 1
       }
     }
 
-    "for IP (4x1,1)" - {
-      val r = IpAddress.fromString("1.2.3.4:1")
+    "should fail" - {
+      forAll(incorrectIps) { (in, cause) => {
+        val r = IpAddress.fromString(in)
 
-      "should succeed" in {
-        assert(r.isSuccess)
+        r.isSuccess shouldBe false
+      }
       }
 
-      "should return correct IP" in {
-        r.get.ip shouldBe "1.2.3.4"
-      }
-
-      "should return correct port" in {
-        r.get.port shouldBe 1
-      }
-    }
-
-    "for malformed IP" - {
-      val r = IpAddress.fromString("192.168.112:1")
-
-      "should fail" in {
-        assert(r.isFailure)
-      }
-    }
-
-    "for port missing" - {
-      val r = IpAddress.fromString("192.168.112.24")
-
-      "should fail" in {
-        assert(r.isFailure)
-      }
-    }
-
-    "for port empty" - {
-      val r = IpAddress.fromString("192.168.112:")
-
-      "should fail" in {
-        assert(r.isFailure)
-      }
     }
   }
 }
