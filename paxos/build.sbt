@@ -6,7 +6,7 @@ lazy val root = (project in file(".")).
   settings(
     inThisBuild(List(
       organization := "com.example",
-      scalaVersion := "2.12.3",
+      scalaVersion := "2.11.3",
       version      := "0.1.0-SNAPSHOT"
     )),
     name := "Hello",
@@ -16,4 +16,7 @@ lazy val root = (project in file(".")).
 
     libraryDependencies += "com.typesafe.akka" %% "akka-testkit"  % akkaVersion % Test,
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.3" % Test,
+
+    libraryDependencies += "org.scala-lang" % "scala-pickling_2.11" % "0.9.1"
+
   )
