@@ -40,4 +40,17 @@ class IpAddressTest extends FreeSpec with TableDrivenPropertyChecks with Matcher
 
     }
   }
+
+  "An IpAddress.toInetAddress" - {
+    "should succeed" in {
+      val ip = "192.168.1.12"
+      val port = 1200
+
+      val ina = IpAddress.fromString(s"$ip:$port").get.toInetAddress
+
+      ina.getHostName.toString shouldBe ip
+      ina.getPort shouldBe port
+
+    }
+  }
 }

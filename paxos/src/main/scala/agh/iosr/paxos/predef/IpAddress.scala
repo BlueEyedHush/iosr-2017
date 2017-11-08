@@ -1,6 +1,8 @@
 package agh.iosr.paxos.predef
 
+import java.net.InetSocketAddress
 import java.util.regex.Pattern
+
 import scala.util.{Failure, Try}
 
 case object InvalidAddressFormat extends Exception
@@ -24,5 +26,9 @@ object IpAddress {
     } else {
       Failure(InvalidAddressFormat)
     }
+  }
+
+  implicit class IpAddressExtension(val ip: IpAddress) extends AnyVal {
+    def toInetAddress: InetSocketAddress = new InetSocketAddress(ip.ip, ip.port)
   }
 }
