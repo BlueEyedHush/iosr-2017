@@ -28,6 +28,8 @@ object IpAddress {
     }
   }
 
+  def fromInetAddress(insa: InetSocketAddress): IpAddress = IpAddress(insa.getHostName, insa.getPort)
+
   implicit class IpAddressExtension(val ip: IpAddress) extends AnyVal {
     def toInetAddress: InetSocketAddress = new InetSocketAddress(ip.ip, ip.port)
   }

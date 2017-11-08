@@ -1,5 +1,7 @@
 package agh.iosr.paxos.predef
 
+import java.net.InetSocketAddress
+
 import org.scalatest.prop.TableDrivenPropertyChecks
 import org.scalatest.{FreeSpec, Matchers}
 
@@ -48,8 +50,22 @@ class IpAddressTest extends FreeSpec with TableDrivenPropertyChecks with Matcher
 
       val ina = IpAddress.fromString(s"$ip:$port").get.toInetAddress
 
-      ina.getHostName.toString shouldBe ip
+      ina.getHostName shouldBe ip
       ina.getPort shouldBe port
+
+    }
+  }
+
+  "An IpAddress.fromInetAddress" - {
+    "should succeed" in {
+      val ip = "192.168.1.12"
+      val port = 1200
+
+      val ina = new InetSocketAddress(ip, port)
+      val ipa = IpAddress.fromInetAddress(ina)
+
+      ipa.ip shouldBe ip
+      ipa.port shouldBe port
 
     }
   }
