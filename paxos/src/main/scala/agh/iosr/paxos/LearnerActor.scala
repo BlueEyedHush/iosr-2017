@@ -42,9 +42,9 @@ class LearnerActor(discovery:ActorRef) extends Actor {
       for (actor <- resp.actors) {
         actor ! LearnerQuestionForValue(resp.requestKey, getRequests.get(resp.requestKey).get._2)
       }
-      //import scala.concurrent.ExecutionContext.Implicits.global
-      //context.system.scheduler.scheduleOnce(0 seconds, self, LearnerLoopback(resp.requestKey))
+      import scala.concurrent.ExecutionContext.Implicits.global
+      context.system.scheduler.scheduleOnce(1 seconds, self, LearnerLoopback(resp.requestKey))
     case req:LearnerLoopback =>
-      println(getRequests.get(req.requestKey).get)
+      getRequests.get(req.requestKey).get._1 ! KvsGetResponse(Option(3))
   }
 }
