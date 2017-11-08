@@ -1,5 +1,11 @@
 package agh.iosr.paxos
 
+import java.util.regex.Pattern
+
+import akka.actor.Status.Success
+
+import scala.util.{Failure, Try}
+
 package object predef {
   type InstanceId = Int
 
