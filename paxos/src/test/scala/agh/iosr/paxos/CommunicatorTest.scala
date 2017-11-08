@@ -1,65 +1,69 @@
 package agh.iosr.paxos
 
-import java.net.InetSocketAddress
-
 import agh.iosr.paxos.Messages._
 import agh.iosr.paxos.predef.{IdToIpMap, IpAddress, IpToIdMap}
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.ActorSystem
 import akka.io.{IO, Udp}
-import akka.testkit.{ImplicitSender, TestKit}
-import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+import akka.testkit.{ImplicitSender, TestActors, TestKit}
+import org.scalatest.{Matchers, WordSpecLike}
 
 case class TestMessage() extends SendableMessage
 
 class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
-  with WordSpecLike with Matchers with BeforeAndAfterAll {
-  
-  val address: String = "127.0.0.1"
-  val port = 9692
-  val testActorIp = IpAddress.fromString(f"$address:$port").get
+  with WordSpecLike with Matchers {
 
-  val addresses: List[IpAddress] = List(
-      IpAddress("127.0.0.1", 9971),
-      IpAddress("127.0.0.1", 9972),
-      IpAddress("127.0.0.1", 9973),
-  )
-
-  val ipToId: IpToIdMap = addresses.zipWithIndex.toMap
-  val idToIp: IdToIpMap = ipToId.map(_.swap)
-
-  var comm: ActorRef = _
-
-  override def afterAll {
-    TestKit.shutdownActorSystem(system)
+  def generatePrereq(clusterIps: List[IpAddress]) = {
+    val ipToId: IpToIdMap = clusterIps.zipWithIndex.toMap
+    val idToIp: IdToIpMap = ipToId.map(_.swap)
+    (ipToId, idToIp)
   }
 
-  override def beforeAll(): Unit = {
-    comm = system.actorOf(Communicator.props(self, testActorIp, ipToId, idToIp), "communicator")
-    // @todo remove sleep?
-    Thread.sleep(100)
-  }
 
   "Connector" must {
+    "unicast" must {
+      val testActorIp = IpAddress.fromString("127.0.0.1:9692").get
 
-    "forward incoming messages to master" in {
-      val data = TestMessage()
-      val message = Udp.Received(SerializationHelper.serialize(data), null)
-      comm ! message
-      expectMsg(ReceivedMessage(data, null))
+      val unicastSet: List[IpAddress] = List(
+        testActorIp,
+        IpAddress("127.0.0.1", 9971),
+      )
+
+      val (ipToId, idToIp) = generatePrereq(unicastSet)
+      val comm = system.actorOf(Communicator.props(self, testActorIp, ipToId, idToIp))
+
+      "forward incoming messages to master" in {
+        val data = TestMessage()
+        comm ! Udp.Received(SerializationHelper.serialize(data), null)
+        expectMsg(ReceivedMessage(data, null))
+      }
+
+      "send unicast messages" in {
+        IO(Udp) ! Udp.Bind(self, unicastSet(1).toInetAddress)
+        expectMsg(Udp.Bound(unicastSet(1).toInetAddress))
+
+        val data = TestMessage()
+        comm ! SendUnicast(data, unicastSet(1).toInetAddress)
+        expectMsg(Udp.Received(SerializationHelper.serialize(data), testActorIp.toInetAddress))
+      }
     }
 
-    "send unicast messages" in {
-      IO(Udp) ! Udp.Bind(self, addresses(2).toInetAddress)
-      expectMsg(Udp.Bound(addresses(2).toInetAddress))
-
-      val data = TestMessage()
-      comm ! SendUnicast(data, addresses(2).toInetAddress)
-      expectMsg(Udp.Received(SerializationHelper.serialize(data), new InetSocketAddress(address, port)))
-    }
-/*
 
     "send multicast messages" in {
-      addresses.foreach {
+      val testActorIp = IpAddress.fromString("127.0.0.1:9693").get
+
+      val multicastSet: List[IpAddress] = List(
+        testActorIp,
+        IpAddress("127.0.0.1", 9981),
+        IpAddress("127.0.0.1", 9982),
+        IpAddress("127.0.0.1", 9983),
+      )
+
+      val echo = system.actorOf(TestActors.echoActorProps)
+      val (ipToId, idToIp) = generatePrereq(multicastSet)
+      val comm = system.actorOf(Communicator.props(echo, testActorIp, ipToId, idToIp))
+
+      val setLen = multicastSet.size
+      multicastSet.slice(1, setLen).foreach {
         address =>
           IO(Udp) ! Udp.Bind(self, address.toInetAddress)
           expectMsg(Udp.Bound(address.toInetAddress))
@@ -68,13 +72,12 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       val data = TestMessage()
       comm ! SendMulticast(data, "dummy")
 
-      val receivedMsg = Udp.Received(SerializationHelper.serialize(data), new InetSocketAddress(address, port))
-      addresses.foreach {
+      val receivedMsg = Udp.Received(SerializationHelper.serialize(data), testActorIp.toInetAddress)
+      multicastSet.slice(1, setLen).foreach {
         _ => expectMsg(receivedMsg)
       }
 
     }
-*/
 
   }
 
