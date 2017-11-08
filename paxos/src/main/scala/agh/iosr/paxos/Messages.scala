@@ -12,27 +12,27 @@ package object Messages {
   val NULL_ROUND: Int = -1
   val NULL_VALUE: Int = Int.MinValue
 
-  trait PaxosMsg
+  trait SendableMessage
 
-  case class KvsSend(key: String, value: Value) extends PaxosMsg
-  case class KvsGetRequest(key: String) extends PaxosMsg
-  case class KvsGetResponse(value: Option[Value]) extends PaxosMsg
+  case class KvsSend(key: String, value: Value)
+  case class KvsGetRequest(key: String)
+  case class KvsGetResponse(value: Option[Value])
 
-  case class Prepare(mo: MessageOwner) extends PaxosMsg
-  case class Promise(mo: MessageOwner, mostRecentRoundVoted: RoundId, mostRecentValue: Value) extends PaxosMsg
-  case class AcceptRequest(mo: MessageOwner, value: Value) extends PaxosMsg
-  case class Accepted(mo: MessageOwner, value: Value) extends PaxosMsg
+  case class Prepare(mo: MessageOwner) extends SendableMessage
+  case class Promise(mo: MessageOwner, mostRecentRoundVoted: RoundId, mostRecentValue: Value) extends SendableMessage
+  case class AcceptRequest(mo: MessageOwner, value: Value) extends SendableMessage
+  case class Accepted(mo: MessageOwner, value: Value) extends SendableMessage
 
   /** NACK for phase 1 */
-  case class RoundTooOld(mo: MessageOwner, mostRecentKnown: InstanceId) extends PaxosMsg
+  case class RoundTooOld(mo: MessageOwner, mostRecentKnown: InstanceId) extends SendableMessage
   /** NACK for phase 2 */
-  case class HigherProposalReceived(mo: MessageOwner, roundId: RoundId) extends PaxosMsg
+  case class HigherProposalReceived(mo: MessageOwner, roundId: RoundId) extends SendableMessage
 
-  case class LearnerSubscribe() extends PaxosMsg
-  case class ValueLearned(when: InstanceId, key: String, value: Value) extends PaxosMsg
+  case class LearnerSubscribe()
+  case class ValueLearned(when: InstanceId, key: String, value: Value)
 
-  case class SendUnicast(data: PaxosMsg, remote: InetSocketAddress)
-  case class SendMulticast(data: PaxosMsg, destination: String)
-  case class ReceivedMessage(data: PaxosMsg, remote: InetSocketAddress)
+  case class SendUnicast(data: SendableMessage, remote: InetSocketAddress)
+  case class SendMulticast(data: SendableMessage, destination: String)
+  case class ReceivedMessage(data: SendableMessage, remote: InetSocketAddress)
 }
 

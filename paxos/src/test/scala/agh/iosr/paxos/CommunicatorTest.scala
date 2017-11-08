@@ -2,16 +2,17 @@ package agh.iosr.paxos
 
 import java.net.InetSocketAddress
 
+import agh.iosr.paxos.Messages._
 import akka.actor.{ActorRef, ActorSystem}
+import akka.io.{IO, Udp}
 import akka.testkit.{ImplicitSender, TestKit}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
-import akka.io.{IO, Udp}
 
-import agh.iosr.paxos.Messages.{KvsGetRequest, ReceivedMessage, SendMulticast, SendUnicast}
+case class TestMessage() extends SendableMessage
 
 class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
   with WordSpecLike with Matchers with BeforeAndAfterAll {
-
+  
   val master: ActorRef = self
   val address: String = "localhost"
   val port = 9692
@@ -46,7 +47,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
   "Connector" must {
 
     "forward incoming messages to master" in {
-      val data = KvsGetRequest("test")
+      val data = TestMessage()
       val message = Udp.Received(SerializationHelper.serialize(data), null)
       comm ! message
       expectMsg(ReceivedMessage(data, null))
@@ -56,7 +57,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       IO(Udp) ! Udp.Bind(self, clusterAddresses("acceptors")(2))
       expectMsg(Udp.Bound(clusterAddresses("acceptors")(2)))
 
-      val data = KvsGetRequest("test")
+      val data = TestMessage()
       comm ! SendUnicast(data, clusterAddresses("acceptors")(2))
       expectMsg(Udp.Received(SerializationHelper.serialize(data), new InetSocketAddress(address, port)))
     }
@@ -69,7 +70,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
           expectMsg(Udp.Bound(address))
       }
 
-      val data = KvsGetRequest("test")
+      val data = TestMessage()
       comm ! SendMulticast(data, actorGroup)
 
       val receivedMsg = Udp.Received(SerializationHelper.serialize(data), new InetSocketAddress(address, port))
