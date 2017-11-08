@@ -1,12 +1,10 @@
 package agh.iosr.paxos
 
-import java.nio.file.Paths
-
 import agh.iosr.paxos.predef.IpAddress
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
-import com.typesafe.config.{Config, ConfigFactory}
-import org.scalatest.{FreeSpec, FreeSpecLike, Matchers}
+import com.typesafe.config.ConfigFactory
+import org.scalatest.{FreeSpecLike, Matchers}
 
 import scala.collection._
 
@@ -34,7 +32,7 @@ class ClusterInfoTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
     "should return values matching those from file" in {
       import correct._
 
-      implicit val c = ConfigFactory.parseFile(Paths.get("cluster-info-test.conf").toFile)
+      implicit val c = ConfigFactory.load("cluster-info-test.conf")
       val actor = system.actorOf(ClusterInfo.props())
 
       actor ! GetInfo

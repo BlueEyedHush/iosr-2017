@@ -29,7 +29,7 @@ class ClusterInfo()(implicit config: Config) extends Actor {
 
 
   private def myIpFromConf(): IpAddress = {
-    IpAddress.fromString(config.getString("iosr-paxos.my-address")) match {
+    IpAddress.fromString(config.getString("iosrPaxos.myAddress")) match {
       case Success(ip) => ip
       case Failure(t) => throw ConfigError
     }
@@ -38,7 +38,7 @@ class ClusterInfo()(implicit config: Config) extends Actor {
   private def nodeMapsFromConf(): (immutable.Map[IpAddress, NodeId], immutable.Map[NodeId, IpAddress]) = {
     val mapBuilder = immutable.Map.newBuilder[IpAddress, NodeId]
 
-    val convIp = config.getStringList("iosr-paxos.nodes")
+    val convIp = config.getStringList("iosrPaxos.nodes")
       .asScala
       .map(IpAddress.fromString(_))
 
