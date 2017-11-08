@@ -27,4 +27,3 @@ package object Messages {
   case class LearnerSubscribe()
   case class ValueLearned(when: InstanceId, key: String, value: Value)
 }
-
