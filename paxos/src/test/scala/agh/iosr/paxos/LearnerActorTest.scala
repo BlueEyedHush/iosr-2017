@@ -14,15 +14,28 @@ class LearnerActorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
   "222" must {
     "1111" in {
-      val actor = system.actorOf(Props[LearnerActor])
+      val discovery = system.actorOf(Props[LearnersActorDiscovery])
+      val actor = system.actorOf(Props(new LearnerActor(discovery)))
       actor ! LearnerSubscribe
     }
   }
 
   "333" must {
     "4444" in {
-      val actor = system.actorOf(Props[LearnerActor])
+      val discovery = system.actorOf(Props[LearnersActorDiscovery])
+      val actor = system.actorOf(Props(new LearnerActor(discovery)))
       actor ! ValueLearned(3, "String", 6)
+    }
+  }
+
+
+  "555" must {
+    "666" in {
+      val discovery = system.actorOf(Props[LearnersActorDiscovery])
+      val actor = system.actorOf(Props(new LearnerActor(discovery)))
+      val subactor1 = system.actorOf(Props(new LearnerActor(discovery)))
+      val subactor2 = system.actorOf(Props(new LearnerActor(discovery)))
+      actor ! KvsGetRequest("GimmeKeys")
     }
   }
 }
