@@ -1,6 +1,7 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.predef.{ConfigError, IpAddress, NodeId}
+
+import agh.iosr.paxos.predef._
 import akka.actor.{Actor, Props}
 import com.typesafe.config.Config
 
@@ -10,8 +11,8 @@ import scala.util.{Failure, Success}
 
 case object GetInfo
 case class NodeInfo(myIp: IpAddress,
-                    ipToId: immutable.Map[IpAddress, NodeId],
-                    idToIp: immutable.Map[NodeId, IpAddress])
+                    ipToId: IpToIdMap,
+                    idToIp: IdToIpMap)
 
 object ClusterInfo {
   def props()(implicit config: Config) = Props(new ClusterInfo())
@@ -35,7 +36,7 @@ class ClusterInfo()(implicit config: Config) extends Actor {
     }
   }
 
-  private def nodeMapsFromConf(): (immutable.Map[IpAddress, NodeId], immutable.Map[NodeId, IpAddress]) = {
+  private def nodeMapsFromConf(): (IpToIdMap, IdToIpMap) = {
     val mapBuilder = immutable.Map.newBuilder[IpAddress, NodeId]
 
     val convIp = config.getStringList("iosrPaxos.nodes")

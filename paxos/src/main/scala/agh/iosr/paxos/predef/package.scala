@@ -1,5 +1,7 @@
 package agh.iosr.paxos
 
+import scala.collection.immutable
+
 package object predef {
   type InstanceId = Int
 
@@ -16,4 +18,7 @@ package object predef {
   val NULL_NODE_ID = -1
 
   case object ConfigError extends RuntimeException
+
+  type IdToIpMap = immutable.Map[NodeId, IpAddress]
+  type IpToIdMap = immutable.Map[IpAddress, NodeId]
 }
