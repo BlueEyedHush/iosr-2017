@@ -2,6 +2,8 @@ package agh.iosr.paxos
 
 import java.net.InetSocketAddress
 
+trait SendableMessage
+
 package object Messages {
   type Value = Int
   type InstanceId = Int
@@ -12,7 +14,7 @@ package object Messages {
   val NULL_ROUND: Int = -1
   val NULL_VALUE: Int = Int.MinValue
 
-  trait SendableMessage
+
 
   case class KvsSend(key: String, value: Value)
   case class KvsGetRequest(key: String)

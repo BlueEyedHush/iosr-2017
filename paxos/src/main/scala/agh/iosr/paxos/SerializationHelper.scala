@@ -1,13 +1,19 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.Messages.SendableMessage
+import akka.actor.ActorSystem
+import akka.serialization.SerializationExtension
 import akka.util.ByteString
 
-import scala.pickling._
-import scala.pickling.json._
-
 object SerializationHelper {
-  def serialize(msg: SendableMessage): ByteString = ByteString(msg.pickle.value)
+  def serialize(msg: SendableMessage)(implicit as: ActorSystem): ByteString = {
+    val se = SerializationExtension(as)
+    val ba = se.serialize(msg)
+    ByteString(ba.get)
+  }
 
-  def deserialize(bs: ByteString): SendableMessage = bs.utf8String.unpickle[SendableMessage]
+  def deserialize(bs: ByteString)(implicit as: ActorSystem): SendableMessage = {
+    val se = SerializationExtension(as)
+    val o = se.deserialize(bs.toArray, classOf[SendableMessage])
+    o.get
+  }
 }
