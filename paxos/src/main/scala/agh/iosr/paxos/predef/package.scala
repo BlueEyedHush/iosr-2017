@@ -14,4 +14,6 @@ package object predef {
     */
   type NodeId = Int
   val NULL_NODE_ID = -1
+
+  case object ConfigError extends RuntimeException
 }
