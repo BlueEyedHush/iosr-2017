@@ -27,7 +27,7 @@ object Messages {
   case class HigherProposalReceived(mo: MessageOwner, roundId: RoundId) extends SendableMessage
 
   case class LearnerSubscribe()
-  case class ValueLearned(when: InstanceId, key: Key, value: Value)
+  case class ValueLearned(when: InstanceId, v: PaxosValue)
 }
 
 

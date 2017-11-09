@@ -34,13 +34,15 @@ object Metadata {
   case class P2aSent(_iid: InstanceId, _mrr: RoundId, votedValue: PaxosValue, ourValue: PaxosValue)
     extends InstanceState(_iid, _mrr)
 
+  case class WaitingForResults(_iid: InstanceId, _mrr: RoundId, ourValue: PaxosValue)
+
   // retransmission timer
 
   case class Start(v: PaxosValue)
 }
 
 class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with ActorLogging {
-
+  // @todo subscribe with learner
   import Metadata._
 
   private val minQuorumSize = nodeCount/2 + 1
@@ -122,6 +124,11 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
                   // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
                   // we might overwrite some values
                   // @todo higher instance ID
+                  val cst = state[P2aSent]
+                  is = WaitingForResults(st.iid, st.mostRecentRound, cst.ourValue)
+
+                  // @todo transision in successful case
+                  // @todo: what is the policy is voting inherited value fails? abandon it or continue?
                 case _ => log.info(s"Got message while in phase 2 we are not interested in: $m")
               }
 
@@ -139,6 +146,32 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
     }
 
   }
+
+  def waitingForResults: Receive = {
+    // we wait for results of round we initiated and we have to make a decision - do we restart or value was voted for
+    case KvsSend(key, value) => ???
+
+    // @todo timeout
+    case ValueLearned(iid, votedValue) =>
+      val st = state[WaitingForResults]
+      if (st._iid == iid) {
+        // OK, results of our round are published
+        if (votedValue == st.ourValue) {
+          // mission accomplished, we can go back to idle
+          is = Idle()
+          context.become(idle)
+          // @todo we could also inform user that we are ready for his next request
+        } else {
+          // we have to try once again
+          is = Idle()
+          context.become(executing)
+          self ! Start(st.ourValue)
+        }
+      }
+
+  }
+
+  // @todo make short names longer
 
   // @todo: extract and test separatelly
   private def pickValueToVote(pm: PromiseMap, currentRid: RoundId): Option[PaxosValue] = {
@@ -165,7 +198,7 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
     }
 
     if (largest.size > 1) {
-      log.error(s"Quorum reported in 1B more than one value: $largest");
+      log.error(s"Quorum reported in 1B more than one value: $largest")
     }
 
     largest.headOption
