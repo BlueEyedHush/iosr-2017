@@ -24,23 +24,34 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
   "Connector" must {
     "unicast" must {
-      val testActorIp = new InetSocketAddress("localhost", 9692)
 
-      val unicastSet: List[InetSocketAddress] = List(
-        testActorIp,
-        new InetSocketAddress("localhost", 9971),
-      )
-
-      val (ipToId, idToIp) = generatePrereq(unicastSet)
-      val comm = system.actorOf(Communicator.props(Set(self), testActorIp, ipToId, idToIp))
+      "inform subscribers when becomes ready to perform action" in {
+        val testActorIp = new InetSocketAddress("localhost", 9692)
+        val unicastSet: List[InetSocketAddress] = List(testActorIp, new InetSocketAddress("localhost", 9971))
+        val (ipToId, idToIp) = generatePrereq(unicastSet)
+        system.actorOf(Communicator.props(Set(self), testActorIp, ipToId, idToIp))
+        expectMsg(Ready)
+      }
 
       "forward incoming messages to master" in {
+        val testActorIp = new InetSocketAddress("localhost", 9693)
+        val unicastSet: List[InetSocketAddress] = List(testActorIp, new InetSocketAddress("localhost", 9971))
+        val (ipToId, idToIp) = generatePrereq(unicastSet)
+        val comm = system.actorOf(Communicator.props(Set(self), testActorIp, ipToId, idToIp))
+        expectMsg(Ready)
+
         val data = TestMessage()
         comm ! Udp.Received(serializer.serialize(data), null)
         expectMsg(ReceivedMessage(data, predef.NULL_NODE_ID))
       }
 
       "send unicast messages" in {
+        val testActorIp = new InetSocketAddress("localhost", 9694)
+        val unicastSet: List[InetSocketAddress] = List(testActorIp, new InetSocketAddress("localhost", 9971))
+        val (ipToId, idToIp) = generatePrereq(unicastSet)
+        val comm = system.actorOf(Communicator.props(Set(self), testActorIp, ipToId, idToIp))
+        expectMsg(Ready)
+
         IO(Udp) ! Udp.Bind(self, unicastSet(1))
         expectMsg(Udp.Bound(unicastSet(1)))
 
@@ -52,7 +63,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
 
     "send multicast messages" in {
-      val testActorIp = new InetSocketAddress("localhost", 9693)
+      val testActorIp = new InetSocketAddress("localhost", 9695)
 
       val multicastSet: List[InetSocketAddress] = List(
         testActorIp,
