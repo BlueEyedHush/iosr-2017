@@ -25,10 +25,13 @@ object Metadata {
   type PromiseMap = mutable.Map[NodeId, RPromise]
 
   // @todo: maybe they should be oridnary classes?
-  case class P1aSent(_iid: InstanceId, _mrr: RoundId, promises: PromiseMap = mutable.Map[NodeId, RPromise]())
+  case class P1aSent(_iid: InstanceId,
+                     _mrr: RoundId,
+                     v: PaxosValue,
+                     promises: PromiseMap = mutable.Map[NodeId, RPromise]())
     extends InstanceState(_iid, _mrr)
 
-  case class P2aSent(_iid: InstanceId, _mrr: RoundId, promises: PromiseMap = mutable.Map[NodeId, RPromise]())
+  case class P2aSent(_iid: InstanceId, _mrr: RoundId, votedValue: PaxosValue, ourValue: PaxosValue)
     extends InstanceState(_iid, _mrr)
 
   // retransmission timer
@@ -66,11 +69,13 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
 
       mostRecentlySeenInstanceId += 1
 
-      is = P1aSent(iid, rid)
+      is = P1aSent(iid, rid, PaxosValue(key, value))
       context.become(executing)
   }
 
   def executing: Receive = {
+    // @todo: retransmission
+
     case KvsSend(key, value) => ???
 
     // @todo: write unapply for ConsensusMessae and pattern match here
@@ -81,7 +86,7 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
         if (iid == st.iid) {
           if (rid == st.mostRecentRound) {
             st match {
-              case P1aSent(_, _, promises) => m match {
+              case P1aSent(_, _, ourV, promises) => m match {
                 case Promise(_, vr, ovv) =>
                   val st1a = state[P1aSent]
                   if (st1a.promises.contains(sid)) {
@@ -90,9 +95,13 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
                     st1a.promises += (sid -> RPromise(vr, ovv))
 
                     if(st1a.promises.size >= minQuorumSize) {
-                      // @todo extract to helper function
-                      st1a.
-                      // @todo got quorum, can progress to phase 2a
+                      val v = pickValueToVote(st1a.promises, st.mostRecentRound).getOrElse(ourV)
+
+                      val currentMo = MessageOwner(st.iid, st.mostRecentRound)
+                      communicator ! SendMulticast(AcceptRequest(currentMo, v))
+
+                      // enter Phase 2
+                      is = P2aSent(st.iid, st.mostRecentRound, v, ourV)
                     }
                   }
               }
