@@ -1,5 +1,4 @@
-package agh.iosr.paxos
-
+package agh.iosr.paxos.utils
 
 import java.net.InetSocketAddress
 import java.util.regex.Pattern
