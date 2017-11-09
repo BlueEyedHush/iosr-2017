@@ -1,10 +1,12 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.Messages._
+import agh.iosr.paxos.actors._
+import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.predef._
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+
 import scala.concurrent.duration._
 
 class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
