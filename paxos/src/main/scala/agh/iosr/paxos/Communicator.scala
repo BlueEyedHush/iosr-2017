@@ -9,6 +9,7 @@ import akka.io.{IO, Udp}
 case class SendUnicast(data: SendableMessage, remote: NodeId)
 case class SendMulticast(data: SendableMessage)
 case class ReceivedMessage(data: SendableMessage, remote: NodeId)
+case object Ready
 
 object Communicator {
   def props(subscribers: Set[ActorRef], me: InetSocketAddress, ipToId: IpToIdMap, idToIpMap: IdToIpMap): Props =

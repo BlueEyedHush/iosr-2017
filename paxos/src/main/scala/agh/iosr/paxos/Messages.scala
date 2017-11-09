@@ -7,14 +7,19 @@ object Messages {
 
 
 
-  case class KvsSend(key: String, value: Value)
-  case class KvsGetRequest(key: String)
+  case class KvsSend(key: Key, value: Value)
+  case class KvsGetRequest(key: Key)
   case class KvsGetResponse(value: Option[Value])
 
-  case class Prepare(mo: MessageOwner) extends SendableMessage
-  case class Promise(mo: MessageOwner, mostRecentRoundVoted: RoundId, mostRecentValue: Value) extends SendableMessage
-  case class AcceptRequest(mo: MessageOwner, value: Value) extends SendableMessage
-  case class Accepted(mo: MessageOwner, value: Value) extends SendableMessage
+  // @todo cleanup this mess
+  // @todo do we really need roundId in MessageOwner?
+
+
+  class ConsensusMessage(val mo: MessageOwner) extends SendableMessage
+  case class Prepare(_mo: MessageOwner) extends ConsensusMessage(_mo)
+  case class Promise(_mo: MessageOwner, lastRoundVoted: RoundId, ov: Option[PaxosValue]) extends ConsensusMessage(_mo)
+  case class AcceptRequest(_mo: MessageOwner, v: PaxosValue) extends ConsensusMessage(_mo)
+  case class Accepted(_mo: MessageOwner, v: PaxosValue) extends ConsensusMessage(_mo)
 
   /** NACK for phase 1 */
   case class RoundTooOld(mo: MessageOwner, mostRecentKnown: InstanceId) extends SendableMessage
@@ -22,7 +27,7 @@ object Messages {
   case class HigherProposalReceived(mo: MessageOwner, roundId: RoundId) extends SendableMessage
 
   case class LearnerSubscribe()
-  case class ValueLearned(when: InstanceId, key: String, value: Value)
+  case class ValueLearned(when: InstanceId, key: Key, value: Value)
 }
 
 
