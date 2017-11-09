@@ -62,11 +62,15 @@ class Acceptor()
           }
 
         case FallAsleep => context.become(down)
+
+        case _ =>
       }
   }
 
   def down: Receive = {
     case ReceivedMessage(WakeUp, _) => context.become(ready)
+
+    case _ =>
   }
 
 }
