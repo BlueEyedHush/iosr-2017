@@ -22,9 +22,9 @@ object Messages {
   case class Accepted(_mo: MessageOwner, v: PaxosValue) extends ConsensusMessage(_mo)
 
   /** NACK for phase 1 */
-  case class RoundTooOld(mo: MessageOwner, mostRecentKnown: InstanceId) extends SendableMessage
+  case class RoundTooOld(_mo: MessageOwner, mostRecentKnown: InstanceId) extends ConsensusMessage(_mo)
   /** NACK for phase 2 */
-  case class HigherProposalReceived(mo: MessageOwner, roundId: RoundId) extends SendableMessage
+  case class HigherProposalReceived(_mo: MessageOwner, roundId: RoundId) extends ConsensusMessage(_mo)
 
   case class LearnerSubscribe()
   case class ValueLearned(when: InstanceId, v: PaxosValue)

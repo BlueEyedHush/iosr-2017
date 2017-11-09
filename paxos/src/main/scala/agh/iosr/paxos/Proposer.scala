@@ -23,7 +23,7 @@ object Metadata {
 
   case class Idle() extends InstanceState
 
-  case class ExecutingInstance(var iid: InstanceId, var mostRecentRound: RoundId) extends InstanceState
+  class ExecutingInstance(var iid: InstanceId, var mostRecentRound: RoundId) extends InstanceState
 
   type PromiseMap = mutable.Map[NodeId, RPromise]
 
@@ -32,16 +32,16 @@ object Metadata {
   case class P1aSent(_iid: InstanceId,
                      _mrr: RoundId,
                      v: PaxosValue,
-                     rejectors: Set[NodeId] = Set(),
+                     rejectors: mutable.Set[NodeId] = mutable.Set(),
                      promises: PromiseMap = mutable.Map[NodeId, RPromise]())
-    extends InstanceState(_iid, _mrr)
+    extends ExecutingInstance(_iid, _mrr)
 
   case class P2aSent(_iid: InstanceId,
                      _mrr: RoundId,
                      votedValue: PaxosValue,
                      ourValue: PaxosValue,
-                     nacks: Set[NodeId] = Set())
-    extends InstanceState(_iid, _mrr)
+                     nacks: mutable.Set[NodeId] = mutable.Set())
+    extends ExecutingInstance(_iid, _mrr)
 
   // retransmission timer
 
@@ -98,14 +98,14 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
       is = P1aSent(iid, rid, v)
 
     // @todo: write unapply for ConsensusMessae and pattern match here
-    case ReceivedMessage(m, sid) => {
+    case ReceivedMessage(m, sid) => m match {
       case m: ConsensusMessage =>
         val st = state[ExecutingInstance]
         val MessageOwner(iid, rid) = m.mo
         if (iid == st.iid) {
           if (rid == st.mostRecentRound) {
             st match {
-              case P1aSent(_, _, ourV, promises) => m match {
+              case P1aSent(_, _, ourV, _, promises) => m match {
                 case RoundTooOld(_, mostRecent) =>
                   // @todo when we gain possibility of ID correction, modify it here
                   // someone is already using this instance - we need to switch to new one
@@ -151,7 +151,6 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
         } else {
           log.info(s"Got message from instance ($iid) != current (${st.iid}), ignoring: $m")
         }
-
     }
 
     case P1Tick =>
@@ -170,44 +169,41 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
     // we wait for results of round we initiated and we have to make a decision - do we restart or value was voted for
     case KvsSend(key, value) => ??? // @todo
 
-    // @todo timeout
-    case ReceivedMessage(m, sid) => m match {
-      case ValueLearned(iid, votedValue) =>
-        val st = state[P2aSent]
-        if (st._iid == iid) {
-          // OK, results of our round are published
-          if (votedValue == st.ourValue) {
-            // mission accomplished, we can go back to idle
-            is = Idle()
-            context.become(idle)
-            // @todo we could also inform user that we are ready for his next request
-          } else {
-            /*
-            we have to try once again
-            but we might have a problem - if we were trying to complete prevously initiated round, what
-            value should we try to propose in a new round? the one we were trying to push or the one we originally
-            wanted?
+    case ValueLearned(iid, votedValue) =>
+      val st = state[P2aSent]
+      if (st._iid == iid) {
+        // OK, results of our round are published
+        if (votedValue == st.ourValue) {
+          // mission accomplished, we can go back to idle
+          is = Idle()
+          context.become(idle)
+          // @todo we could also inform user that we are ready for his next request
+        } else {
+          /*
+          we have to try once again
+          but we might have a problem - if we were trying to complete prevously initiated round, what
+          value should we try to propose in a new round? the one we were trying to push or the one we originally
+          wanted?
 
-            currently, the old one is simply _dropped_
-             */
+          currently, the old one is simply _dropped_
+           */
 
-            is = Idle()
-            context.become(executing)
-            self ! Start(st.ourValue)
-          }
-
-          stopTimer(p2Conf)
-          stopTimer(tConf)
+          is = Idle()
+          context.become(executing)
+          self ! Start(st.ourValue)
         }
 
-      case HigherProposalReceived(_, higherId) =>
-        // higher proposal appeared while our has been voted on -> but we cannot back off now
-        // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
-        // we might overwrite some values
-        // all in all, we cannot do much here
-        state[P2aSent].nacks += sid
-        ()
-    }
+        stopTimer(p2Conf)
+        stopTimer(tConf)
+      }
+
+    case ReceivedMessage(HigherProposalReceived(_, higherId), sid) =>
+      // higher proposal appeared while our has been voted on -> but we cannot back off now
+      // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
+      // we might overwrite some values
+      // all in all, we cannot do much here
+      state[P2aSent].nacks += sid
+      ()
 
     case P2Tick =>
       val cst = state[P2aSent]
