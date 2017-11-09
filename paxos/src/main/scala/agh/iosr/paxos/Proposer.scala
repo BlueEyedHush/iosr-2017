@@ -1,10 +1,13 @@
 package agh.iosr.paxos
 
+import java.util.concurrent.TimeUnit
+
 import agh.iosr.paxos.Messages._
 import agh.iosr.paxos.predef._
-import akka.actor.{Actor, ActorLogging, ActorRef}
+import akka.actor.{Actor, ActorLogging, ActorRef, Timers}
 
 import scala.collection._
+import scala.concurrent.duration.FiniteDuration
 
 /*
 Checklist:
@@ -25,21 +28,34 @@ object Metadata {
   type PromiseMap = mutable.Map[NodeId, RPromise]
 
   // @todo: maybe they should be oridnary classes?
+  // @todo put this shit in companion object
   case class P1aSent(_iid: InstanceId,
                      _mrr: RoundId,
                      v: PaxosValue,
+                     rejectors: Set[NodeId] = Set(),
                      promises: PromiseMap = mutable.Map[NodeId, RPromise]())
     extends InstanceState(_iid, _mrr)
 
-  case class P2aSent(_iid: InstanceId, _mrr: RoundId, votedValue: PaxosValue, ourValue: PaxosValue)
+  case class P2aSent(_iid: InstanceId,
+                     _mrr: RoundId,
+                     votedValue: PaxosValue,
+                     ourValue: PaxosValue,
+                     nacks: Set[NodeId] = Set())
     extends InstanceState(_iid, _mrr)
 
   // retransmission timer
 
   case class Start(v: PaxosValue)
+
+  case object P1Tick
+  case object P2Tick
 }
 
-class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with ActorLogging {
+object Proposer {
+
+}
+
+class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with ActorLogging with Timers {
   // @todo subscribe with learner
   import Metadata._
 
@@ -67,8 +83,6 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
   }
 
   def executing: Receive = {
-    // @todo: retransmission
-
     case KvsSend(key, value) => ???
 
     case Start(v) =>
@@ -77,6 +91,7 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
       val mo = MessageOwner(iid, rid)
       // @todo: FSM - should be sent upon entering executing state
       communicator ! SendMulticast(Prepare(mo))
+      startTimer(p1Conf)
 
       mostRecentlySeenInstanceId += 1
       is = P1aSent(iid, rid, v)
@@ -94,7 +109,13 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
                   // @todo when we gain possibility of ID correction, modify it here
                   // someone is already using this instance - we need to switch to new one
                   // we didn't sent 2a yet, so we can simply abandon this instance and try for a new one
+
+                  // just for comletness (in case mechanism changes later)
+                  val st1a = state[P1aSent]
+                  st1a.rejectors += sid
+
                   is = Idle()
+                  stopTimer(p1Conf)
                   self ! Start(ourV)
                 case Promise(_, vr, ovv) =>
                   val st1a = state[P1aSent]
@@ -104,6 +125,8 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
                     st1a.promises += (sid -> RPromise(vr, ovv))
 
                     if(st1a.promises.size >= minQuorumSize) {
+                      stopTimer(p1Conf)
+
                       val v = pickValueToVote(st1a.promises, st.mostRecentRound).getOrElse(ourV)
 
                       val currentMo = MessageOwner(st.iid, st.mostRecentRound)
@@ -112,6 +135,7 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
                       // enter Phase 2
                       is = P2aSent(st.iid, st.mostRecentRound, v, ourV)
                       context.become(waitingForResults)
+                      startTimer(p2Conf)
                     }
                   }
               }
@@ -128,44 +152,66 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
 
     }
 
+    case P1Tick =>
+      val cst = state[P1aSent]
+      val alive = cst.promises.keySet ++ cst.rejectors
+
+      (0 until nodeCount).filter(!alive.contains(_)).foreach(id => {
+        // @todo helper method for sending (avoid code duplication)
+        // @todo make current MO easily accessible
+        val msg = Prepare(MessageOwner(cst._iid, cst._mrr))
+        communicator ! SendUnicast(msg, id)
+      })
   }
 
   def waitingForResults: Receive = {
     // we wait for results of round we initiated and we have to make a decision - do we restart or value was voted for
-    case KvsSend(key, value) => ???
+    case KvsSend(key, value) => ??? // @todo
 
     // @todo timeout
-    case ValueLearned(iid, votedValue) =>
-      val st = state[P2aSent]
-      if (st._iid == iid) {
-        // OK, results of our round are published
-        if (votedValue == st.ourValue) {
-          // mission accomplished, we can go back to idle
-          is = Idle()
-          context.become(idle)
-          // @todo we could also inform user that we are ready for his next request
-        } else {
-          /*
-          we have to try once again
-          but we might have a problem - if we were trying to complete prevously initiated round, what
-          value should we try to propose in a new round? the one we were trying to push or the one we originally
-          wanted?
+    case ReceivedMessage(m, sid) => m match {
+      case ValueLearned(iid, votedValue) =>
+        val st = state[P2aSent]
+        if (st._iid == iid) {
+          // OK, results of our round are published
+          if (votedValue == st.ourValue) {
+            // mission accomplished, we can go back to idle
+            is = Idle()
+            context.become(idle)
+            // @todo we could also inform user that we are ready for his next request
+          } else {
+            /*
+            we have to try once again
+            but we might have a problem - if we were trying to complete prevously initiated round, what
+            value should we try to propose in a new round? the one we were trying to push or the one we originally
+            wanted?
 
-          currently, the old one is simply _dropped_
-           */
+            currently, the old one is simply _dropped_
+             */
 
-          is = Idle()
-          context.become(executing)
-          self ! Start(st.ourValue)
+            is = Idle()
+            context.become(executing)
+            self ! Start(st.ourValue)
+          }
+
+          stopTimer(p2Conf)
         }
-      }
 
-    case HigherProposalReceived(_, higherId) =>
-      // higher proposal appeared while our has been voted on -> but we cannot back off now
-      // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
-      // we might overwrite some values
-      // all in all, we cannot do much here
-      ()
+      case HigherProposalReceived(_, higherId) =>
+        // higher proposal appeared while our has been voted on -> but we cannot back off now
+        // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
+        // we might overwrite some values
+        // all in all, we cannot do much here
+        state[P2aSent].nacks += sid
+        ()
+    }
+
+    case P2Tick =>
+      val cst = state[P2aSent]
+      val msg = AcceptRequest(MessageOwner(cst._iid, cst._iid), cst.votedValue)
+      (0 until nodeCount).filter(cst.nacks.contains).foreach(id => {
+        communicator ! SendUnicast(msg, id)
+      })
 
   }
 
@@ -201,6 +247,18 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
     }
 
     largest.headOption
+  }
+
+  case class TimerConf(key: String, msInterval: Int, msg: Any)
+  private val p1Conf = TimerConf("p1a", 500, P1Tick)
+  private val p2Conf = TimerConf("p2a", 500, P1Tick)
+
+  def startTimer(conf: TimerConf) = {
+    timers.startPeriodicTimer(conf.key, conf.msg, FiniteDuration(conf.msInterval, TimeUnit.MILLISECONDS))
+  }
+
+  def stopTimer(conf: TimerConf) = {
+    timers.cancel(conf.key)
   }
 
 }
