@@ -60,7 +60,13 @@ class Acceptor()
             case InstanceState(lastParticipated, _, _, _) =>
               communicator ! SendUnicast(HigherProposalReceived(MessageOwner(instanceId, roundId), lastParticipated), remoteId)
           }
+
+        case FallAsleep => context.become(down)
       }
+  }
+
+  def down: Receive = {
+    case ReceivedMessage(WakeUp, _) => context.become(ready)
   }
 
 }

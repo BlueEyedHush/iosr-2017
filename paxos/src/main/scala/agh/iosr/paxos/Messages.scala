@@ -26,4 +26,7 @@ object Messages {
   case class LearnerQuestionForValue(requestId: Int, key: String) extends SendableMessage
   case class LearnerAnswerWithValue(requestId: Int, rememberedValue: Option[(InstanceId, Value)]) extends SendableMessage
   case class LearnerLoopback(requestId: Int)
+
+  case object FallAsleep extends SendableMessage
+  case object WakeUp extends SendableMessage
 }
