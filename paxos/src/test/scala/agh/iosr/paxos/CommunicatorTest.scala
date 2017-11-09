@@ -33,7 +33,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       "forward incoming messages to master" in {
         val data = TestMessage()
         comm ! Udp.Received(SerializationHelper.serialize(data), null)
-        expectMsg(ReceivedMessage(data, null))
+        expectMsg(ReceivedMessage(data, predef.NULL_NODE_ID))
       }
 
       "send unicast messages" in {
@@ -41,7 +41,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
         expectMsg(Udp.Bound(unicastSet(1).toInetAddress))
 
         val data = TestMessage()
-        comm ! SendUnicast(data, unicastSet(1).toInetAddress)
+        comm ! SendUnicast(data, 1)
         expectMsg(Udp.Received(SerializationHelper.serialize(data), testActorIp.toInetAddress))
       }
     }
@@ -68,7 +68,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       }
 
       val data = TestMessage()
-      comm ! SendMulticast(data, "dummy")
+      comm ! SendMulticast(data)
 
       val receivedMsg = Udp.Received(SerializationHelper.serialize(data), testActorIp.toInetAddress)
       multicastSet.slice(1, setLen).foreach {
