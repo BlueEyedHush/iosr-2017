@@ -6,7 +6,7 @@ import agh.iosr.paxos.predef._
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import scala.collection.mutable
 
-case class InstanceState(lastParticipated: RoundId, lastVoted: RoundId, vote: Value, remote: NodeId)
+case class InstanceState(lastParticipated: RoundId, lastVoted: RoundId, vote: KeyValue, remote: NodeId)
 
 object Acceptor {
   def props(): Props =
@@ -32,11 +32,11 @@ class Acceptor()
       data match {
         case Prepare(MessageOwner(instanceId, roundId)) =>
 
-          runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, NULL_VALUE, NULL_NODE_ID)) match {
+          runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, NULL_KEY_VALUE, NULL_NODE_ID)) match {
             case InstanceState(NULL_ROUND, _, _, _) =>
-              runningInstances(instanceId) = InstanceState(roundId, NULL_ROUND, NULL_VALUE, remoteId)
+              runningInstances(instanceId) = InstanceState(roundId, NULL_ROUND, NULL_KEY_VALUE, remoteId)
               highestInstance = math.max(highestInstance, instanceId)
-              communicator ! SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, NULL_VALUE), remoteId)
+              communicator ! SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, NULL_KEY_VALUE), remoteId)
 
             case InstanceState(lastParticipated, _, _, lastRemote)
               if roundId <= lastParticipated && remoteId != lastRemote =>
@@ -50,7 +50,7 @@ class Acceptor()
 
         case AcceptRequest(MessageOwner(instanceId, roundId), value) =>
 
-          runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, NULL_VALUE, NULL_NODE_ID)) match {
+          runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, NULL_KEY_VALUE, NULL_NODE_ID)) match {
             case InstanceState(lastParticipated, lastVoted, vote, lastRemote)
               if roundId >= lastParticipated && (roundId != lastVoted || (value == vote && remoteId == lastRemote))=>
                 runningInstances(instanceId) = InstanceState(roundId, roundId, value, remoteId)
