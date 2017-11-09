@@ -11,7 +11,7 @@ import scala.concurrent.duration._
 
 
 class LearnerActor() extends Actor {
-  var subscribers = new ListBuffer[ActorRef]()
+  var subscribers = new ListBuffer[NodeId]()
   var memory: mutable.HashMap[String, (InstanceId, Value)] = mutable.HashMap.empty
   var getRequests: mutable.HashMap[Int, (ActorRef, String, ListBuffer[Option[(InstanceId, Value)]])] = mutable.HashMap.empty
   val rand = Random
@@ -26,12 +26,12 @@ class LearnerActor() extends Actor {
   }
 
   def ready: Receive = {
-    case LearnerSubscribe =>
-      subscribers += sender
+    case ReceivedMessage(LearnerSubscribe(), remoteId) =>
+      subscribers += remoteId
 
     case ReceivedMessage(Accepted(MessageOwner(instanceId, _), KeyValue(key, value)), _) =>
       memory.put(key, (instanceId, value))
-      subscribers.foreach {_ ! ValueLearned(instanceId, key, value)}
+      subscribers.foreach {sub => communicator ! SendUnicast(ValueLearned(instanceId, key, value), sub)}
 
     case KvsGetRequest(key) =>
       var requestId = rand.nextInt
@@ -72,5 +72,7 @@ class LearnerActor() extends Actor {
         case None =>
       }
       getRequests.remove(requestId)
+
+    case _ =>
   }
 }
