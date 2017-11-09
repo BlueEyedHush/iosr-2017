@@ -29,7 +29,7 @@ class Learner() extends Actor {
   }
 
   def ready: Receive = {
-    case LearnerSubscribe =>
+    case LearnerSubscribe() =>
       subscribers += sender
 
     case ReceivedMessage(Accepted(RoundIdentifier(instanceId, _), KeyValue(key, value)), _) =>
