@@ -7,17 +7,20 @@ import scala.collection.immutable
 package object predef {
   type InstanceId = Int
 
-  type Value = Int
-  val NULL_VALUE = Int.MinValue
-
   type RoundId = Int
-  val NULL_ROUND = -1
+  val NULL_ROUND: RoundId = -1
+
+  type Value = Int
+  val NULL_VALUE: Value = Int.MinValue
+
+  case class KeyValue(key: String, value: Int)
+  val NULL_KEY_VALUE: KeyValue = KeyValue("", NULL_VALUE)
 
   /**
     * NodeId's are global across the cluster, but this guarantee relies on uniform order in config
     */
   type NodeId = Int
-  val NULL_NODE_ID = -1
+  val NULL_NODE_ID: NodeId = -1
 
   case object ConfigError extends RuntimeException
 
