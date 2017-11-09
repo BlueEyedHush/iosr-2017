@@ -1,7 +1,7 @@
 package agh.iosr.paxos
 
 import akka.actor.{ActorSystem, Props}
-import akka.testkit.{ImplicitSender, TestActors, TestKit, TestProbe}
+import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 import agh.iosr.paxos.Messages._
 import agh.iosr.paxos.predef._
@@ -70,5 +70,24 @@ class LearnerActorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
       expectMsg(10 seconds, KvsGetResponse(Some(6)))
     }
+
+    "not perform any action when down and continue work when waken up" in {
+      val testCommunicator = TestProbe()
+      val actor = system.actorOf(Props(new LearnerActor()))
+      testCommunicator.send(actor, Ready)
+
+      actor ! LearnerSubscribe
+
+      val instanceId = 3
+      val key = "String"
+      val value = 6
+      testCommunicator.send(actor, ReceivedMessage(FallAsleep, NULL_NODE_ID))
+      testCommunicator.send(actor, ReceivedMessage(Accepted(MessageOwner(instanceId, NULL_ROUND), KeyValue(key, value)), NULL_NODE_ID))
+      expectNoMessage(10 seconds)
+      testCommunicator.send(actor, ReceivedMessage(WakeUp, NULL_NODE_ID))
+      testCommunicator.send(actor, ReceivedMessage(Accepted(MessageOwner(instanceId, NULL_ROUND), KeyValue(key, value)), NULL_NODE_ID))
+      expectMsg(ValueLearned(instanceId, key, value))
+    }
+
   }
 }

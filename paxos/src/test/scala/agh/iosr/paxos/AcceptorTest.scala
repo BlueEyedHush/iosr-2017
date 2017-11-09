@@ -1,13 +1,11 @@
 package agh.iosr.paxos
 
-import java.net.InetSocketAddress
-
 import agh.iosr.paxos.Messages._
 import agh.iosr.paxos.predef._
 import akka.actor.{ActorRef, ActorSystem}
-import akka.io.{IO, Udp}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+import scala.concurrent.duration._
 
 class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
   with WordSpecLike with Matchers with BeforeAndAfterAll {
@@ -137,6 +135,18 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val highestInstance = 8
       communicateAcceptor(ReceivedMessage(Prepare(MessageOwner(instanceId, roundId)), remoteId))
       testCommunicator.expectMsg(SendUnicast(RoundTooOld(MessageOwner(instanceId, roundId), highestInstance), remoteId))
+    }
+
+    "not perform any action when down and continue work when waken up" in {
+      val instanceId = 20
+      val roundId = 2
+      val remoteId = 3
+      communicateAcceptor(ReceivedMessage(FallAsleep, NULL_NODE_ID))
+      communicateAcceptor(ReceivedMessage(Prepare(MessageOwner(instanceId, roundId)), remoteId))
+      testCommunicator.expectNoMessage(10 seconds)
+      communicateAcceptor(ReceivedMessage(WakeUp, NULL_NODE_ID))
+      communicateAcceptor(ReceivedMessage(Prepare(MessageOwner(instanceId, roundId)), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, NULL_KEY_VALUE), remoteId))
     }
 
   }

@@ -72,5 +72,15 @@ class LearnerActor() extends Actor {
         case None =>
       }
       getRequests.remove(requestId)
+
+    case ReceivedMessage(FallAsleep, _) => context.become(down)
+
+    case _ =>
+  }
+
+  def down: Receive = {
+    case ReceivedMessage(WakeUp, _) => context.become(ready)
+
+    case _ =>
   }
 }
