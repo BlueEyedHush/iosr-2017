@@ -87,6 +87,11 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
           if (rid == st.mostRecentRound) {
             st match {
               case P1aSent(_, _, ourV, promises) => m match {
+                case RoundTooOld(_, mostRecent) =>
+                  // @todo when we gain possibility of ID correction, modify it here
+                  // someone is already using this instance - we need to switch to new one
+                  // we didn't sent 2a yet, so we can simply abandon this instance and try for a new one
+                  // @todo
                 case Promise(_, vr, ovv) =>
                   val st1a = state[P1aSent]
                   if (st1a.promises.contains(sid)) {
@@ -108,14 +113,17 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
 
                 // @todo separate receive for round 2a (but we'd need to repeat all freshness checks...)
               case P2aSent(_, _, promises) => m match {
-                case _: Promise =>
-                  log.info(s"Got Promise ($m), but already in phase 2, ignoring")
-                // @todo handle 2B message
+                case HigherProposalReceived(_, higherId) =>
+                  // higher proposal appeared while our has been voted on -> we need to back off, use higher instanceId
+                  // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
+                  // we might overwrite some values
+                  // @todo higher instance ID
+                case _ => log.info(s"Got message while in phase 2 we are not interested in: $m")
               }
 
             }
           } else if (rid > st.mostRecentRound) {
-            // @todo: backoff and restart with higher instanceId (depending on phase we are in or not?)
+            log.info(s"Higher round notices, but maybe our proposal was chosen before?")
           } else if (rid < st.mostRecentRound) {
             log.info(s"Got message from same instance ($iid), but lower round ($rid, current: ${st.mostRecentRound}), " +
               s"ignoring: $m")
