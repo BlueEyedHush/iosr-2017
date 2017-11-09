@@ -3,80 +3,74 @@ package agh.iosr.paxos
 import akka.actor._
 import agh.iosr.paxos.Messages._
 import agh.iosr.paxos.predef._
+
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
-import scala.collection.mutable.HashMap
 import scala.util.Random
 import scala.concurrent.duration._
 
-class LearnerActor(discovery:ActorRef) extends Actor {
-  discovery ! RegisterLearner
+
+class LearnerActor() extends Actor {
   var subscribers = new ListBuffer[ActorRef]()
-  var memory = HashMap[String, (InstanceId, Value)]()
-  var getRequests = HashMap[Int, (ActorRef, String, ListBuffer[Option[(InstanceId, Value)]])]()
+  var memory: mutable.HashMap[String, (InstanceId, Value)] = mutable.HashMap.empty
+  var getRequests: mutable.HashMap[Int, (ActorRef, String, ListBuffer[Option[(InstanceId, Value)]])] = mutable.HashMap.empty
   val rand = Random
 
-  override def receive = {
+
+  var communicator: ActorRef = _
+
+  override def receive: Receive = {
+    case Ready =>
+      communicator = sender()
+      context.become(ready)
+  }
+
+  def ready: Receive = {
     case LearnerSubscribe =>
       subscribers += sender
 
-    case x:ValueLearned =>
-      memory.put(x.key, (x.when, x.value))
+    case ReceivedMessage(Accepted(MessageOwner(instanceId, _), KeyValue(key, value)), _) =>
+      memory.put(key, (instanceId, value))
+      subscribers.foreach {_ ! ValueLearned(instanceId, key, value)}
 
-      for (actor <- subscribers) actor ! x
+    case KvsGetRequest(key) =>
+      var requestId = rand.nextInt
+      while (getRequests.contains(requestId)) requestId = rand.nextInt
 
-    case r:KvsGetRequest =>
-      var requestKey = rand.nextInt
-      while(getRequests.contains(requestKey)) requestKey = rand.nextInt
+      getRequests += (requestId -> (sender, key, new ListBuffer[Option[(InstanceId, Value)]]))
+      communicator ! SendMulticast(LearnerQuestionForValue(requestId, key))
 
-      getRequests += (requestKey -> (sender, r.key, new ListBuffer[Option[(InstanceId, Value)]]))
-      discovery ! GiveMeLearners(requestKey)
-
-    case q:LearnerQuestionForValue =>
-      sender ! LearnerAnswerWithValue(q.stomp, memory.get(q.key))
-
-    case a:LearnerAnswerWithValue =>
-      var reqData = getRequests.get(a.stomp)
-      reqData match {
-      case Some(_) =>
-        reqData.get._3 += a.rememberedValue
-
-      case None =>
-        println("OVER")
-      }
-    case resp:LearnersListPlease =>
-      for (actor <- resp.actors) {
-        actor ! LearnerQuestionForValue(resp.requestKey, getRequests.get(resp.requestKey).get._2)
-      }
       import scala.concurrent.ExecutionContext.Implicits.global
-      context.system.scheduler.scheduleOnce(3 seconds, self, LearnerLoopback(resp.requestKey))
+      context.system.scheduler.scheduleOnce(3 seconds, self, LearnerLoopback(requestId))
 
-    case req:LearnerLoopback =>
-      var propsFromMap = getRequests.get(req.requestKey)
+    case ReceivedMessage(LearnerQuestionForValue(requestId, key), remoteId) =>
+      communicator ! SendUnicast(LearnerAnswerWithValue(requestId, memory.get(key)), remoteId)
+
+    case ReceivedMessage(LearnerAnswerWithValue(requestId, value), _) =>
+      val reqData = getRequests.get(requestId)
+      reqData match {
+        case Some(_) => reqData.get._3 += value
+        case None => println("OVER")
+      }
+
+    case LearnerLoopback(requestId) =>
+      val propsFromMap = getRequests.get(requestId)
       propsFromMap match {
-        case Some(_) =>
-          var props = propsFromMap.get
+        case Some(props) =>
           var currentMaxInst = -1
           var currentValue = -1
-          for (t <- props._3) {
-            t match {
-            case Some(_) =>
-              var i = t.get._1
-              var v = t.get._2
-              if (i > currentMaxInst) {
-                currentMaxInst = i
-                currentValue = v
-              }
-            case None =>
-
-            }
+          props._3 foreach {
+            case Some((instance, value)) if instance > currentMaxInst =>
+              currentMaxInst = instance
+              currentValue = value
+            case _ =>
           }
           if (currentMaxInst != -1)
             props._1 ! KvsGetResponse(Option(currentValue))
           else
             props._1 ! KvsGetResponse(None)
         case None =>
-
       }
-      getRequests.remove(req.requestKey)
+      getRequests.remove(requestId)
   }
 }
