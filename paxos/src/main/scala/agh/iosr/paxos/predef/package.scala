@@ -10,7 +10,7 @@ package object predef {
   type Value = Int
   val NULL_VALUE = Int.MinValue
 
-  type RoundId = Int
+  type RoundId = Long
   val NULL_ROUND = -1
 
   /**
