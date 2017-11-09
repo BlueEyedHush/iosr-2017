@@ -1,6 +1,6 @@
-package agh.iosr.paxos
+package agh.iosr.paxos.actors
 
-import agh.iosr.paxos.Messages._
+import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.predef._
 import akka.actor._
 
@@ -13,7 +13,7 @@ object LearnerActor {
   def props(): Props = Props(new LearnerActor)
 }
 
-class LearnerActor() extends Actor {
+class Learner() extends Actor {
   var subscribers = new ListBuffer[ActorRef]()
   var memory: mutable.HashMap[String, (InstanceId, Value)] = mutable.HashMap.empty
   var getRequests: mutable.HashMap[Int, (ActorRef, String, ListBuffer[Option[(InstanceId, Value)]])] = mutable.HashMap.empty
