@@ -1,10 +1,9 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.Messages._
 import agh.iosr.paxos.predef.{IdToIpMap, IpAddress, IpToIdMap}
 import akka.actor.ActorSystem
 import akka.io.{IO, Udp}
-import akka.testkit.{ImplicitSender, TestActors, TestKit}
+import akka.testkit.{ImplicitSender, TestKit}
 import org.scalatest.{Matchers, WordSpecLike}
 
 case class TestMessage() extends SendableMessage
@@ -29,7 +28,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       )
 
       val (ipToId, idToIp) = generatePrereq(unicastSet)
-      val comm = system.actorOf(Communicator.props(self, testActorIp, ipToId, idToIp))
+      val comm = system.actorOf(Communicator.props(Set(self), testActorIp, ipToId, idToIp))
 
       "forward incoming messages to master" in {
         val data = TestMessage()
@@ -58,9 +57,8 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
         IpAddress("127.0.0.1", 9983),
       )
 
-      val echo = system.actorOf(TestActors.echoActorProps)
       val (ipToId, idToIp) = generatePrereq(multicastSet)
-      val comm = system.actorOf(Communicator.props(echo, testActorIp, ipToId, idToIp))
+      val comm = system.actorOf(Communicator.props(Set(), testActorIp, ipToId, idToIp))
 
       val setLen = multicastSet.size
       multicastSet.slice(1, setLen).foreach {

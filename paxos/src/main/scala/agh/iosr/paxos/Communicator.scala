@@ -11,11 +11,11 @@ case class SendMulticast(data: SendableMessage, destination: String)
 case class ReceivedMessage(data: SendableMessage, remote: InetSocketAddress)
 
 object Communicator {
-  def props(master: ActorRef, me: IpAddress, ipToId: IpToIdMap, idToIpMap: IdToIpMap): Props =
-    Props(new Communicator(master, me, ipToId, idToIpMap))
+  def props(subscribers: Set[ActorRef], me: IpAddress, ipToId: IpToIdMap, idToIpMap: IdToIpMap): Props =
+    Props(new Communicator(subscribers, me, ipToId, idToIpMap))
 }
 
-class Communicator(master: ActorRef, me: IpAddress, ipToId: IpToIdMap, idToIpMap: IdToIpMap)
+class Communicator(subscribers: Set[ActorRef], me: IpAddress, ipToId: IpToIdMap, idToIpMap: IdToIpMap)
   extends Actor with ActorLogging {
   import context.system
   IO(Udp) ! Udp.Bind(self, me.toInetAddress)
@@ -26,7 +26,8 @@ class Communicator(master: ActorRef, me: IpAddress, ipToId: IpToIdMap, idToIpMap
   }
 
   def ready(socket: ActorRef): Receive = {
-    case Udp.Received(data, remote) => master ! ReceivedMessage(SerializationHelper.deserialize(data), remote)
+    case Udp.Received(data, remote) =>
+      subscribers.foreach(_ ! ReceivedMessage(SerializationHelper.deserialize(data), remote))
     case SendUnicast(data, remote) => socket ! Udp.Send(SerializationHelper.serialize(data), remote)
     case SendMulticast(data, _) =>
       val serializedData = SerializationHelper.serialize(data)
