@@ -60,6 +60,8 @@ class Acceptor()
             case InstanceState(lastParticipated, _, _, _) =>
               communicator ! SendUnicast(HigherProposalReceived(MessageOwner(instanceId, roundId), lastParticipated), remoteId)
           }
+
+        case _ =>
       }
   }
 

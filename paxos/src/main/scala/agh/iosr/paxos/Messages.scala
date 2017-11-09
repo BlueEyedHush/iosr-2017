@@ -10,8 +10,8 @@ object Messages {
   case class KvsGetRequest(key: String)
   case class KvsGetResponse(value: Option[Value])
 
-  case class LearnerSubscribe()
-  case class ValueLearned(when: InstanceId, key: String, value: Value)
+  case class LearnerSubscribe() extends SendableMessage
+  case class ValueLearned(when: InstanceId, key: String, value: Value) extends SendableMessage
 
   case class Prepare(mo: MessageOwner) extends SendableMessage
   case class Promise(mo: MessageOwner, mostRecentRoundVoted: RoundId, mostRecentValue: KeyValue) extends SendableMessage
