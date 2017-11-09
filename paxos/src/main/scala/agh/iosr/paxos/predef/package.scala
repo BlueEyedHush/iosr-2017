@@ -1,5 +1,7 @@
 package agh.iosr.paxos
 
+import java.net.InetSocketAddress
+
 import scala.collection.immutable
 
 package object predef {
@@ -19,8 +21,10 @@ package object predef {
 
   case object ConfigError extends RuntimeException
 
-  type IdToIpMap = immutable.Map[NodeId, IpAddress]
-  type IpToIdMap = immutable.Map[IpAddress, NodeId]
+  type IpString = String
+
+  type IdToIpMap = immutable.Map[NodeId, InetSocketAddress]
+  type IpToIdMap = immutable.Map[InetSocketAddress, NodeId]
 
   case class MessageOwner(instanceId: InstanceId, roundId: RoundId)
 }

@@ -1,6 +1,7 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.predef.IpAddress
+import java.net.InetSocketAddress
+
 import com.typesafe.config.ConfigFactory
 import org.scalatest.{FreeSpec, Matchers}
 
@@ -9,10 +10,10 @@ import scala.collection._
 class ClusterInfoTest extends FreeSpec with Matchers {
 
   object correct {
-    val myIp = IpAddress("127.0.0.1", 2551)
+    val myIp = new InetSocketAddress("127.0.0.1", 2551)
     val clusterMembers = List(
-      IpAddress("127.0.0.1", 2550),
-      IpAddress("127.0.0.1", 2551),
+      new InetSocketAddress("127.0.0.1", 2550),
+      new InetSocketAddress("127.0.0.1", 2551),
     )
 
     val ipToId = immutable.Map(

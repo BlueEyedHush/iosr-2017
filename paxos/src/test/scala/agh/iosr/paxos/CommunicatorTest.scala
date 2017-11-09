@@ -1,6 +1,8 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.predef.{IdToIpMap, IpAddress, IpToIdMap}
+import java.net.InetSocketAddress
+
+import agh.iosr.paxos.predef.{IdToIpMap, IpToIdMap}
 import akka.actor.ActorSystem
 import akka.io.{IO, Udp}
 import akka.testkit.{ImplicitSender, TestKit}
@@ -11,7 +13,7 @@ case class TestMessage() extends SendableMessage
 class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
   with WordSpecLike with Matchers {
 
-  def generatePrereq(clusterIps: List[IpAddress]) = {
+  def generatePrereq(clusterIps: List[InetSocketAddress]) = {
     val ipToId: IpToIdMap = clusterIps.zipWithIndex.toMap
     val idToIp: IdToIpMap = ipToId.map(_.swap)
     (ipToId, idToIp)
@@ -20,11 +22,11 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
   "Connector" must {
     "unicast" must {
-      val testActorIp = IpAddress.fromString("127.0.0.1:9692").get
+      val testActorIp = new InetSocketAddress("127.0.0.1", 9692)
 
-      val unicastSet: List[IpAddress] = List(
+      val unicastSet: List[InetSocketAddress] = List(
         testActorIp,
-        IpAddress("127.0.0.1", 9971),
+        new InetSocketAddress("127.0.0.1", 9971),
       )
 
       val (ipToId, idToIp) = generatePrereq(unicastSet)
@@ -37,24 +39,24 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       }
 
       "send unicast messages" in {
-        IO(Udp) ! Udp.Bind(self, unicastSet(1).toInetAddress)
-        expectMsg(Udp.Bound(unicastSet(1).toInetAddress))
+        IO(Udp) ! Udp.Bind(self, unicastSet(1))
+        expectMsg(Udp.Bound(unicastSet(1)))
 
         val data = TestMessage()
         comm ! SendUnicast(data, 1)
-        expectMsg(Udp.Received(SerializationHelper.serialize(data), testActorIp.toInetAddress))
+        expectMsg(Udp.Received(SerializationHelper.serialize(data), testActorIp))
       }
     }
 
 
     "send multicast messages" in {
-      val testActorIp = IpAddress.fromString("127.0.0.1:9693").get
+      val testActorIp = new InetSocketAddress("127.0.0.1", 9693)
 
-      val multicastSet: List[IpAddress] = List(
+      val multicastSet: List[InetSocketAddress] = List(
         testActorIp,
-        IpAddress("127.0.0.1", 9981),
-        IpAddress("127.0.0.1", 9982),
-        IpAddress("127.0.0.1", 9983),
+        new InetSocketAddress("127.0.0.1", 9981),
+        new InetSocketAddress("127.0.0.1", 9982),
+        new InetSocketAddress("127.0.0.1", 9983),
       )
 
       val (ipToId, idToIp) = generatePrereq(multicastSet)
@@ -63,14 +65,14 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       val setLen = multicastSet.size
       multicastSet.slice(1, setLen).foreach {
         address =>
-          IO(Udp) ! Udp.Bind(self, address.toInetAddress)
-          expectMsg(Udp.Bound(address.toInetAddress))
+          IO(Udp) ! Udp.Bind(self, address)
+          expectMsg(Udp.Bound(address))
       }
 
       val data = TestMessage()
       comm ! SendMulticast(data)
 
-      val receivedMsg = Udp.Received(SerializationHelper.serialize(data), testActorIp.toInetAddress)
+      val receivedMsg = Udp.Received(SerializationHelper.serialize(data), testActorIp)
       multicastSet.slice(1, setLen).foreach {
         _ => expectMsg(receivedMsg)
       }
