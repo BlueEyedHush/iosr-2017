@@ -5,8 +5,6 @@ trait SendableMessage
 object Messages {
   import agh.iosr.paxos.predef._
 
-
-
   case class KvsSend(key: String, value: Value)
   case class KvsGetRequest(key: String)
   case class KvsGetResponse(value: Option[Value])
