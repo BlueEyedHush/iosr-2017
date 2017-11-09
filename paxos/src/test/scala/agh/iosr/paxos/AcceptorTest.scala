@@ -5,6 +5,7 @@ import agh.iosr.paxos.predef._
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+
 import scala.concurrent.duration._
 
 class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
@@ -32,7 +33,7 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val roundId = 2
       val remoteId = 3
       communicateAcceptor(ReceivedMessage(Prepare(MessageOwner(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, NULL_KEY_VALUE), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, None), remoteId))
     }
 
     "promise to start participate in a higher round of running instance" in {
@@ -40,7 +41,7 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val roundId = 5
       val remoteId = 4
       communicateAcceptor(ReceivedMessage(Prepare(MessageOwner(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, NULL_KEY_VALUE), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, None), remoteId))
     }
 
     "repeat last promise of given instance to the same coordinator" in {
@@ -48,7 +49,7 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val roundId = 5
       val remoteId = 4
       communicateAcceptor(ReceivedMessage(Prepare(MessageOwner(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, NULL_KEY_VALUE), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, None), remoteId))
     }
 
     "vote if it has not voted already or promised not to vote in given round of given instance" in {
@@ -116,7 +117,7 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val lastVoted = 5
       val vote = KeyValue("a", 10)
       communicateAcceptor(ReceivedMessage(Prepare(MessageOwner(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), lastVoted, vote), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), lastVoted, Some(vote)), remoteId))
     }
 
     "vote even if it has not received any prepare message for given instance" in {
@@ -146,7 +147,7 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       testCommunicator.expectNoMessage(10 seconds)
       communicateAcceptor(ReceivedMessage(WakeUp, NULL_NODE_ID))
       communicateAcceptor(ReceivedMessage(Prepare(MessageOwner(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, NULL_KEY_VALUE), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, None), remoteId))
     }
 
   }

@@ -14,7 +14,8 @@ object Messages {
   case class ValueLearned(when: InstanceId, key: String, value: Value)
 
   case class Prepare(mo: MessageOwner) extends SendableMessage
-  case class Promise(mo: MessageOwner, mostRecentRoundVoted: RoundId, mostRecentValue: KeyValue) extends SendableMessage
+  case class Promise(mo: MessageOwner, mostRecentRoundVoted: RoundId, mostRecentValue: Option[KeyValue])
+    extends SendableMessage
   case class AcceptRequest(mo: MessageOwner, value: KeyValue) extends SendableMessage
   case class Accepted(mo: MessageOwner, value: KeyValue) extends SendableMessage
 

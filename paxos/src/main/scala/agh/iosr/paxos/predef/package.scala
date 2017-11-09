@@ -11,10 +11,9 @@ package object predef {
   val NULL_ROUND: RoundId = -1
 
   type Value = Int
-  val NULL_VALUE: Value = Int.MinValue
+  type Key = String
 
-  case class KeyValue(key: String, value: Int)
-  val NULL_KEY_VALUE: KeyValue = KeyValue("", NULL_VALUE)
+  case class KeyValue(key: Key, value: Value)
 
   /**
     * NodeId's are global across the cluster, but this guarantee relies on uniform order in config
