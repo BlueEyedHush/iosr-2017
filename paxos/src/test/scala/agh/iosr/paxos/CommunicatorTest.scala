@@ -13,6 +13,8 @@ case class TestMessage() extends SendableMessage
 class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
   with WordSpecLike with Matchers {
 
+  private val serializer = new Serializer()
+  
   def generatePrereq(clusterIps: List[InetSocketAddress]) = {
     val ipToId: IpToIdMap = clusterIps.zipWithIndex.toMap
     val idToIp: IdToIpMap = ipToId.map(_.swap)
@@ -34,7 +36,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
       "forward incoming messages to master" in {
         val data = TestMessage()
-        comm ! Udp.Received(SerializationHelper.serialize(data), null)
+        comm ! Udp.Received(serializer.serialize(data), null)
         expectMsg(ReceivedMessage(data, predef.NULL_NODE_ID))
       }
 
@@ -44,7 +46,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
         val data = TestMessage()
         comm ! SendUnicast(data, 1)
-        expectMsg(Udp.Received(SerializationHelper.serialize(data), testActorIp))
+        expectMsg(Udp.Received(serializer.serialize(data), testActorIp))
       }
     }
 
@@ -72,7 +74,7 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       val data = TestMessage()
       comm ! SendMulticast(data)
 
-      val receivedMsg = Udp.Received(SerializationHelper.serialize(data), testActorIp)
+      val receivedMsg = Udp.Received(serializer.serialize(data), testActorIp)
       multicastSet.slice(1, setLen).foreach {
         _ => expectMsg(receivedMsg)
       }

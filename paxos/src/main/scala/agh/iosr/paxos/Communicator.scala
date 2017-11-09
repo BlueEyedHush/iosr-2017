@@ -18,6 +18,8 @@ object Communicator {
 class Communicator(subscribers: Set[ActorRef], me: InetSocketAddress, ipToId: IpToIdMap, idToIpMap: IdToIpMap)
   extends Actor with ActorLogging {
   import context.system
+  private val serializer = new Serializer()
+
   IO(Udp) ! Udp.Bind(self, me)
 
   def receive = {
@@ -28,12 +30,12 @@ class Communicator(subscribers: Set[ActorRef], me: InetSocketAddress, ipToId: Ip
   def ready(socket: ActorRef): Receive = {
     case Udp.Received(data, remote) =>
       val id: NodeId = if (remote != null) ipToId(remote) else predef.NULL_NODE_ID
-      subscribers.foreach(_ ! ReceivedMessage(SerializationHelper.deserialize(data), id))
+      subscribers.foreach(_ ! ReceivedMessage(serializer.deserialize(data), id))
     case SendUnicast(data, remote) =>
       val inet = idToIpMap(remote)
-      socket ! Udp.Send(SerializationHelper.serialize(data), inet)
+      socket ! Udp.Send(serializer.serialize(data), inet)
     case SendMulticast(data) =>
-      val serializedData = SerializationHelper.serialize(data)
+      val serializedData = serializer.serialize(data)
       ipToId.keys.foreach(ip => socket ! Udp.Send(serializedData, ip))
   }
 }
