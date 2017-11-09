@@ -19,7 +19,7 @@ object Metadata {
 
   sealed trait InstanceState
 
-  case class RPromise(lastRoundVoted: RoundId, ov: Option[PaxosValue])
+  case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
 
   case class Idle() extends InstanceState
 
@@ -31,21 +31,21 @@ object Metadata {
   // @todo put this shit in companion object
   case class P1aSent(_iid: InstanceId,
                      _mrr: RoundId,
-                     v: PaxosValue,
+                     v: KeyValue,
                      rejectors: mutable.Set[NodeId] = mutable.Set(),
                      promises: PromiseMap = mutable.Map[NodeId, RPromise]())
     extends ExecutingInstance(_iid, _mrr)
 
   case class P2aSent(_iid: InstanceId,
                      _mrr: RoundId,
-                     votedValue: PaxosValue,
-                     ourValue: PaxosValue,
+                     votedValue: KeyValue,
+                     ourValue: KeyValue,
                      nacks: mutable.Set[NodeId] = mutable.Set())
     extends ExecutingInstance(_iid, _mrr)
 
   // retransmission timer
 
-  case class Start(v: PaxosValue)
+  case class Start(v: KeyValue)
 
   case object P1Tick
   case object P2Tick
@@ -80,7 +80,7 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
   def idle: Receive = {
     case KvsSend(key, value) =>
       context.become(executing)
-      self ! Start(PaxosValue(key, value))
+      self ! Start(KeyValue(key, value))
   }
 
   def executing: Receive = {
@@ -227,8 +227,8 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
   // @todo handling of errant messages in all states
 
   // @todo: extract and test separatelly
-  private def pickValueToVote(pm: PromiseMap, currentRid: RoundId): Option[PaxosValue] = {
-    val largest = mutable.Set[PaxosValue]()
+  private def pickValueToVote(pm: PromiseMap, currentRid: RoundId): Option[KeyValue] = {
+    val largest = mutable.Set[KeyValue]()
 
     var largestFound: RoundId = NULL_ROUND
     pm.values.foreach {

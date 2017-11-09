@@ -12,7 +12,7 @@ package object predef {
 
   type Value = Int
   type Key = String
-  case class PaxosValue(k: Key, v: Value)
+  case class KeyValue(k: Key, v: Value)
 
   /**
     * NodeId's are global across the cluster, but this guarantee relies on uniform order in config
