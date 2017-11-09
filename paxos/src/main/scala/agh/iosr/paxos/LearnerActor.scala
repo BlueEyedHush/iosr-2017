@@ -17,18 +17,22 @@ class LearnerActor(discovery:ActorRef) extends Actor {
   override def receive = {
     case LearnerSubscribe =>
       subscribers += sender
+
     case x:ValueLearned =>
       memory.put(x.key, (x.when, x.value))
+
+      for (actor <- subscribers) actor ! x
+
     case r:KvsGetRequest =>
       var requestKey = rand.nextInt
       while(getRequests.contains(requestKey)) requestKey = rand.nextInt
 
       getRequests += (requestKey -> (sender, r.key, new ListBuffer[Option[(InstanceId, Value)]]))
       discovery ! GiveMeLearners(requestKey)
-    case r:KvsGetResponse =>
-      println(r)
+
     case q:LearnerQuestionForValue =>
       sender ! LearnerAnswerWithValue(q.stomp, memory.get(q.key))
+
     case a:LearnerAnswerWithValue =>
       var reqData = getRequests.get(a.stomp)
       reqData match {
@@ -43,7 +47,8 @@ class LearnerActor(discovery:ActorRef) extends Actor {
         actor ! LearnerQuestionForValue(resp.requestKey, getRequests.get(resp.requestKey).get._2)
       }
       import scala.concurrent.ExecutionContext.Implicits.global
-      context.system.scheduler.scheduleOnce(1 seconds, self, LearnerLoopback(resp.requestKey))
+      context.system.scheduler.scheduleOnce(3 seconds, self, LearnerLoopback(resp.requestKey))
+
     case req:LearnerLoopback =>
       var propsFromMap = getRequests.get(req.requestKey)
       propsFromMap match {
@@ -69,7 +74,8 @@ class LearnerActor(discovery:ActorRef) extends Actor {
           else
             props._1 ! KvsGetResponse(None)
         case None =>
-          
+
       }
+      getRequests.remove(req.requestKey)
   }
 }
