@@ -49,6 +49,7 @@ object Metadata {
 
   case object P1Tick
   case object P2Tick
+  case object Timeout
 }
 
 object Proposer {
@@ -136,6 +137,7 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
                       is = P2aSent(st.iid, st.mostRecentRound, v, ourV)
                       context.become(waitingForResults)
                       startTimer(p2Conf)
+                      startTimer(tConf)
                     }
                   }
               }
@@ -195,6 +197,7 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
           }
 
           stopTimer(p2Conf)
+          stopTimer(tConf)
         }
 
       case HigherProposalReceived(_, higherId) =>
@@ -212,6 +215,15 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
       (0 until nodeCount).filter(cst.nacks.contains).foreach(id => {
         communicator ! SendUnicast(msg, id)
       })
+
+    case Timeout =>
+      /* timeout, we give up */
+      val st = state[P2aSent]
+      log.info(s"Timeout reached, aborting (iid: ${st._iid}, rid: ${st._mrr}")
+
+      is = Idle()
+      context.become(idle)
+      // @todo: good place to inform client we are free
 
   }
 
@@ -250,8 +262,9 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
   }
 
   case class TimerConf(key: String, msInterval: Int, msg: Any)
-  private val p1Conf = TimerConf("p1a", 500, P1Tick)
-  private val p2Conf = TimerConf("p2a", 500, P1Tick)
+  private val p1Conf = TimerConf("p1a", 200, P1Tick)
+  private val p2Conf = TimerConf("p2a", 200, P2Tick)
+  private val tConf = TimerConf("timeout", 2000, Timeout)
 
   def startTimer(conf: TimerConf) = {
     timers.startPeriodicTimer(conf.key, conf.msg, FiniteDuration(conf.msInterval, TimeUnit.MILLISECONDS))
