@@ -1,11 +1,11 @@
 package agh.iosr.paxos
 
+import akka.actor.ActorRef
+
 trait SendableMessage
 
 object Messages {
   import agh.iosr.paxos.predef._
-
-
 
   case class KvsSend(key: String, value: Value)
   case class KvsGetRequest(key: String)
@@ -23,6 +23,10 @@ object Messages {
 
   case class LearnerSubscribe()
   case class ValueLearned(when: InstanceId, key: String, value: Value)
+  case class LearnerQuestionForValue(stomp:Int, key:String)
+  case class LearnerAnswerWithValue(stomp:Int, rememberedValue: Option[(InstanceId, Value)])
+  case class RegisterLearner()
+  case class GiveMeLearners(requestKey:Int)
+  case class LearnersListPlease(requestKey:Int, actors:List[ActorRef])
+  case class LearnerLoopback(requestKey:Int)
 }
-
-
