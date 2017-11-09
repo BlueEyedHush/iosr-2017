@@ -24,11 +24,11 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
   "Connector" must {
     "unicast" must {
-      val testActorIp = new InetSocketAddress("127.0.0.1", 9692)
+      val testActorIp = new InetSocketAddress("localhost", 9692)
 
       val unicastSet: List[InetSocketAddress] = List(
         testActorIp,
-        new InetSocketAddress("127.0.0.1", 9971),
+        new InetSocketAddress("localhost", 9971),
       )
 
       val (ipToId, idToIp) = generatePrereq(unicastSet)
@@ -52,13 +52,13 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
 
     "send multicast messages" in {
-      val testActorIp = new InetSocketAddress("127.0.0.1", 9693)
+      val testActorIp = new InetSocketAddress("localhost", 9693)
 
       val multicastSet: List[InetSocketAddress] = List(
         testActorIp,
-        new InetSocketAddress("127.0.0.1", 9981),
-        new InetSocketAddress("127.0.0.1", 9982),
-        new InetSocketAddress("127.0.0.1", 9983),
+        new InetSocketAddress("localhost", 9981),
+        new InetSocketAddress("localhost", 9982),
+        new InetSocketAddress("localhost", 9983),
       )
 
       val (ipToId, idToIp) = generatePrereq(multicastSet)

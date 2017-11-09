@@ -10,10 +10,10 @@ import scala.collection._
 class ClusterInfoTest extends FreeSpec with Matchers {
 
   object correct {
-    val myIp = new InetSocketAddress("127.0.0.1", 2551)
+    val myIp = new InetSocketAddress("localhost", 2551)
     val clusterMembers = List(
-      new InetSocketAddress("127.0.0.1", 2550),
-      new InetSocketAddress("127.0.0.1", 2551),
+      new InetSocketAddress("localhost", 2550),
+      new InetSocketAddress("localhost", 2551),
     )
 
     val ipToId = immutable.Map(
