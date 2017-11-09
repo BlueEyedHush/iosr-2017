@@ -2,6 +2,7 @@ package agh.iosr.paxos
 
 import java.net.InetSocketAddress
 
+import agh.iosr.paxos.utils.ClusterInfo
 import com.typesafe.config.ConfigFactory
 import org.scalatest.{FreeSpec, Matchers}
 

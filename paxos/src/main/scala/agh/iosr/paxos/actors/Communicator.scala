@@ -1,8 +1,11 @@
-package agh.iosr.paxos
+package agh.iosr.paxos.actors
 
 import java.net.InetSocketAddress
 
+import agh.iosr.paxos._
+import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef.{IdToIpMap, IpToIdMap, NodeId}
+import agh.iosr.paxos.utils.Serializer
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.{IO, Udp}
 

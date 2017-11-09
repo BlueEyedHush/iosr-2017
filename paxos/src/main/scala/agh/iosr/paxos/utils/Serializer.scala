@@ -1,5 +1,6 @@
-package agh.iosr.paxos
+package agh.iosr.paxos.utils
 
+import agh.iosr.paxos.messages.SendableMessage
 import akka.actor.ActorSystem
 import akka.serialization.SerializationExtension
 import akka.util.ByteString

@@ -1,5 +1,4 @@
-package agh.iosr.paxos
-
+package agh.iosr.paxos.messages
 
 trait SendableMessage
 
