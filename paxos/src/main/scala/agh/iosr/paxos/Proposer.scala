@@ -35,6 +35,8 @@ object Metadata {
     extends InstanceState(_iid, _mrr)
 
   // retransmission timer
+
+  case class Start(v: PaxosValue)
 }
 
 class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with ActorLogging {
@@ -58,9 +60,18 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
       context.become(idle)
   }
 
-  // @todo separate methods for idle and executing
   def idle: Receive = {
     case KvsSend(key, value) =>
+      context.become(executing)
+      self ! Start(PaxosValue(key, value))
+  }
+
+  def executing: Receive = {
+    // @todo: retransmission
+
+    case KvsSend(key, value) => ???
+
+    case Start(v) =>
       val iid = mostRecentlySeenInstanceId + 1
       val rid = idGen.nextId()
       val mo = MessageOwner(iid, rid)
@@ -68,15 +79,7 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
       communicator ! SendMulticast(Prepare(mo))
 
       mostRecentlySeenInstanceId += 1
-
-      is = P1aSent(iid, rid, PaxosValue(key, value))
-      context.become(executing)
-  }
-
-  def executing: Receive = {
-    // @todo: retransmission
-
-    case KvsSend(key, value) => ???
+      is = P1aSent(iid, rid, v)
 
     // @todo: write unapply for ConsensusMessae and pattern match here
     case ReceivedMessage(m, sid) => {
@@ -91,7 +94,8 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
                   // @todo when we gain possibility of ID correction, modify it here
                   // someone is already using this instance - we need to switch to new one
                   // we didn't sent 2a yet, so we can simply abandon this instance and try for a new one
-                  // @todo
+                  is = Idle()
+                  self ! Start(ourV)
                 case Promise(_, vr, ovv) =>
                   val st1a = state[P1aSent]
                   if (st1a.promises.contains(sid)) {
