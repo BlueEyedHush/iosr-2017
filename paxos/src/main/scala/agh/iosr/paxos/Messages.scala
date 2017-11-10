@@ -14,7 +14,6 @@ object Messages {
   case class ValueLearned(when: InstanceId, key: String, value: Value)
 
   // @todo cleanup this mess
-  // @todo do we really need roundId in MessageOwner?
 
   class ConsensusMessage(val mo: MessageOwner) extends SendableMessage
   case class Prepare(_mo: MessageOwner) extends ConsensusMessage(_mo)

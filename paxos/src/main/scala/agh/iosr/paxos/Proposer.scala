@@ -77,6 +77,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
   override def preStart(): Unit = {
     super.preStart()
 
+    // @todo learner doesn't send anything back, so this might be susceptible to races
     learner ! LearnerSubscribe
   }
 
@@ -212,6 +213,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
         stopTimer(tConf)
       }
 
+      // @todo also check if _mo is current
     case ReceivedMessage(HigherProposalReceived(_, higherId), sid) =>
       // higher proposal appeared while our has been voted on -> but we cannot back off now
       // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
