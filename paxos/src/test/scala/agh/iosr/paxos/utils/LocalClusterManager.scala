@@ -1,7 +1,9 @@
 package agh.iosr.paxos.utils
 
+import java.net.InetSocketAddress
+
 import agh.iosr.paxos.actors._
-import agh.iosr.paxos.predef.{IdToIpMap, NodeId}
+import agh.iosr.paxos.predef.{IpToIdMap, NodeId}
 import akka.actor.{ActorRef, ActorSystem, Props}
 
 import scala.collection.mutable
@@ -9,16 +11,15 @@ import scala.collection.mutable
 case class NodeEntry(system: ActorSystem, proposer: ActorRef, acceptor: ActorRef, learner: ActorRef, kvStore: ActorRef, communicator: ActorRef)
 case object ElementNotFound extends Exception
 
-class LocalClusterSetupManager {
+class LocalClusterSetupManager(val clusterMap: IpToIdMap, val listenerIp: InetSocketAddress) {
+  private val combinedIpToIdMap = clusterMap + (listenerIp -> clusterMap.size)
+  private val combinedIdToIpMap = combinedIpToIdMap.map(_.swap)
 
   var nodes: mutable.Map[NodeId, NodeEntry] = mutable.Map.empty
 
-  def setup(idToIpMap: IdToIpMap, testIdToIpMap: IdToIpMap = Map.empty): Unit = {
-    val combinedIdToIpMap = idToIpMap ++ testIdToIpMap
-    val combinedIpToIdMap = combinedIdToIpMap.map(_.swap)
-
-    idToIpMap.foreach {
-      case (id, address) =>
+  def setup(): Unit = {
+    clusterMap.foreach {
+      case (address, id) =>
         val system = ActorSystem("Node" + id)
         val acceptor = system.actorOf(Props(new Acceptor()))
         val learner = system.actorOf(Props(new Learner()))
@@ -28,12 +29,14 @@ class LocalClusterSetupManager {
     }
   }
 
-  def terminate(idToIpMap: IdToIpMap): Unit = {
-    idToIpMap.foreach {
-      case (id, _) => nodes(id).system.terminate()
+  def terminate(): Unit = {
+    clusterMap.foreach {
+      case (_, id) => nodes(id).system.terminate()
       case _ =>
     }
   }
+
+  def getCombinedMaps() = (combinedIpToIdMap, combinedIdToIpMap)
 
   def getActorSystem(nodeId: NodeId): Option[ActorSystem] = {
     nodes.get(nodeId) match {
