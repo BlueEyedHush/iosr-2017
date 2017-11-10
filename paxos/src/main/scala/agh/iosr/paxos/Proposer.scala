@@ -16,52 +16,53 @@ Checklist:
 * retransmission
  */
 
-object Metadata {
-
-  sealed trait InstanceState
-
-  case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
-
-  case class Idle() extends InstanceState
-
-  class ExecutingInstance(var iid: InstanceId, var mostRecentRound: RoundId) extends InstanceState
-
-  type PromiseMap = mutable.Map[NodeId, RPromise]
-
-  // @todo: maybe they should be oridnary classes?
-  // @todo put this shit in companion object
-  case class P1aSent(_iid: InstanceId,
-                     _mrr: RoundId,
-                     v: KeyValue,
-                     rejectors: mutable.Set[NodeId] = mutable.Set(),
-                     promises: PromiseMap = mutable.Map[NodeId, RPromise]())
-    extends ExecutingInstance(_iid, _mrr)
-
-  case class P2aSent(_iid: InstanceId,
-                     _mrr: RoundId,
-                     votedValue: KeyValue,
-                     ourValue: KeyValue,
-                     nacks: mutable.Set[NodeId] = mutable.Set())
-    extends ExecutingInstance(_iid, _mrr)
-
-  // retransmission timer
-
-  case object Start
-
-  case object P1Tick
-  case object P2Tick
-  case object Timeout
-}
 
 object Proposer {
   def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId): Props =
     Props(new Proposer(learner, nodeId, nodeCount))
+
+  case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
+
+  // @todo put this shit in companion object
+  // @todo rename mo to RoundIdentifier
+  sealed trait PaxosInstanceState {
+    def mo: MessageOwner
+  }
+
+  object PaxosInstanceState {
+    def unapply(pis: PaxosInstanceState): Option[MessageOwner] = Some(pis.mo)
+  }
+
+  type PromiseMap = mutable.Map[NodeId, RPromise]
+
+  case class Phase1(mo: MessageOwner,
+                    ourValue: KeyValue,
+                    rejectors: mutable.Set[NodeId] = mutable.Set(),
+                    promises: PromiseMap = mutable.Map[NodeId, RPromise]()) extends PaxosInstanceState
+
+  case class Phase2(mo: MessageOwner,
+                    votedValue: KeyValue,
+                    ourValue: KeyValue,
+                    nacks: mutable.Set[NodeId] = mutable.Set()) extends PaxosInstanceState
+
+
+  case object Start
+
+
+  case object P1Tick
+  case object P2Tick
+  case object Timeout
+
+  case class TimerConf(key: String, msInterval: Int, msg: Any)
+  private val p1Conf = TimerConf("p1a", 200, P1Tick)
+  private val p2Conf = TimerConf("p2a", 200, P2Tick)
+  private val tConf = TimerConf("timeout", 2000, Timeout)
 }
 
 class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
   extends Actor with ActorLogging with Timers {
 
-  import Metadata._
+  import Proposer._
 
   private val minQuorumSize = nodeCount/2 + 1
 
@@ -69,8 +70,8 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
   private var mostRecentlySeenInstanceId: InstanceId = 0
   private val idGen = new IdGenerator(nodeId)
 
-  private var is: InstanceState = _
-  private def state[T] = is.asInstanceOf[T]
+  private var paxosState: Option[PaxosInstanceState] = None
+  private def state[T] = paxosState.get.asInstanceOf[T]
 
   private val rqQueue = new util.LinkedList[KeyValue]
 
@@ -90,11 +91,11 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
   def idle: Receive = {
     case KvsSend(key, value) =>
       rqQueue.add(KeyValue(key, value))
-      context.become(executing)
+      context.become(phase1)
       self ! Start
   }
 
-  def executing: Receive = {
+  def phase1: Receive = {
     case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
 
     case Start if rqQueue.size() > 0 =>
@@ -103,94 +104,92 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
       val iid = mostRecentlySeenInstanceId + 1
       val rid = idGen.nextId()
       val mo = MessageOwner(iid, rid)
-      // @todo: FSM - should be sent upon entering executing state
+
       communicator ! SendMulticast(Prepare(mo))
       startTimer(p1Conf)
 
       mostRecentlySeenInstanceId += 1
-      is = P1aSent(iid, rid, v)
+      paxosState = Some(Phase1(mo, v))
 
-    // @todo: write unapply for ConsensusMessae and pattern match here
-    case ReceivedMessage(m, sid) => m match {
-      case m: ConsensusMessage =>
-        val st = state[ExecutingInstance]
-        val MessageOwner(iid, rid) = m.mo
-        if (iid == st.iid) {
-          if (rid == st.mostRecentRound) {
-            st match {
-              case P1aSent(_, _, ourV, _, promises) => m match {
-                case RoundTooOld(_, mostRecent) =>
-                  // @todo when we gain possibility of ID correction, modify it here
-                  // someone is already using this instance - we need to switch to new one
-                  // we didn't sent 2a yet, so we can simply abandon this instance and try for a new one
+    case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) =>
+      val Some(PaxosInstanceState(currentMo)) = paxosState
 
-                  // just for comletness (in case mechanism changes later)
-                  val st1a = state[P1aSent]
-                  st1a.rejectors += sid
+      if(messageMo == currentMo) {
+        val st = state[Phase1]
 
-                  is = Idle()
-                  stopTimer(p1Conf)
-                  rqQueue.addFirst(ourV)
-                  self ! Start
-                case Promise(_, vr, ovv) =>
-                  val st1a = state[P1aSent]
-                  if (st1a.promises.contains(sid)) {
-                    log.info(s"Already got promise from $sid, must be a duplicate: $m")
-                  } else {
-                    st1a.promises += (sid -> RPromise(vr, ovv))
+        m match {
+          case RoundTooOld(_, mostRecent) =>
+            // @todo when we gain possibility of ID correction, modify it here
+            // someone is already using this instance - we need to switch to new one
+            // we didn't sent 2a yet, so we can simply abandon this instance and try for a new one
 
-                    if(st1a.promises.size >= minQuorumSize) {
-                      stopTimer(p1Conf)
+            // just for comletness (in case mechanism changes later)
+            st.rejectors += sid
 
-                      val v = pickValueToVote(st1a.promises, st.mostRecentRound).getOrElse(ourV)
+            paxosState = None
+            stopTimer(p1Conf)
+            rqQueue.addFirst(st.ourValue)
+            self ! Start
 
-                      val currentMo = MessageOwner(st.iid, st.mostRecentRound)
-                      communicator ! SendMulticast(AcceptRequest(currentMo, v))
+          case Promise(_, vr, ovv) =>
+            if (st.promises.contains(sid)) {
+              log.info(s"Already got promise from $sid, must be a duplicate: $m")
+            } else {
+              st.promises += (sid -> RPromise(vr, ovv))
 
-                      // enter Phase 2
-                      is = P2aSent(st.iid, st.mostRecentRound, v, ourV)
-                      context.become(waitingForResults)
-                      startTimer(p2Conf)
-                      startTimer(tConf)
-                    }
-                  }
+              if (st.promises.size >= minQuorumSize) {
+                stopTimer(p1Conf)
+
+                val v = pickValueToVote(st.promises, currentMo.roundId).getOrElse(st.ourValue)
+
+                communicator ! SendMulticast(AcceptRequest(currentMo, v))
+
+                // enter Phase 2
+                paxosState = Some(Phase2(currentMo, v, st.ourValue))
+                context.become(phase2)
+                startTimer(p2Conf)
+                startTimer(tConf)
               }
             }
-          } else if (rid > st.mostRecentRound) {
-            log.info(s"Higher round notices, but maybe our proposal was chosen before?")
-          } else if (rid < st.mostRecentRound) {
-            log.info(s"Got message from same instance ($iid), but lower round ($rid, current: ${st.mostRecentRound}), " +
-              s"ignoring: $m")
-          }
+        }
+
+      } else {
+        if (messageMo.instanceId != currentMo.instanceId) {
+          log.info(s"Got message from instance (${messageMo.instanceId}) != current (${currentMo.instanceId}), " +
+            s"ignoring: $m")
         } else {
-          log.info(s"Got message from instance ($iid) != current (${st.iid}), ignoring: $m")
+          if (messageMo.roundId > currentMo.roundId) {
+            log.info(s"Higher round noticed, but maybe our proposal was chosen before?")
+          } else if (messageMo.roundId < currentMo.roundId) {
+            log.info(s"Got message from same instance (${messageMo.instanceId}), but lower round (${messageMo.roundId}, " +
+              s"current: ${currentMo.roundId}), ignoring: $m")
+          }
         }
     }
 
     case P1Tick =>
-      val cst = state[P1aSent]
-      val alive = cst.promises.keySet ++ cst.rejectors
+      val st = state[Phase1]
+      val alive = st.promises.keySet ++ st.rejectors
 
       (0 until nodeCount).filter(!alive.contains(_)).foreach(id => {
         // @todo helper method for sending (avoid code duplication)
-        // @todo make current MO easily accessible
-        val msg = Prepare(MessageOwner(cst._iid, cst._mrr))
+        val msg = Prepare(st.mo)
         communicator ! SendUnicast(msg, id)
       })
   }
 
-  def waitingForResults: Receive = {
+  def phase2: Receive = {
     // we wait for results of round we initiated and we have to make a decision - do we restart or value was voted for
     case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
 
     case ValueLearned(iid, k, v) =>
       val votedValue = KeyValue(k,v)
-      val st = state[P2aSent]
-      if (st._iid == iid) {
+      val st = state[Phase2]
+      if (st.mo.instanceId == iid) {
         // OK, results of our round are published
         if (votedValue == st.ourValue) {
           // mission accomplished, we can go back to idle
-          is = Idle()
+          paxosState = None
           context.become(idle)
           // @todo we could also inform user that we are ready for his next request
         } else {
@@ -203,9 +202,9 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
           currently, the old one is simply _dropped_
            */
 
-          is = Idle()
+          paxosState = None
           rqQueue.addFirst(st.ourValue)
-          context.become(executing)
+          context.become(phase1)
           self ! Start
         }
 
@@ -214,33 +213,31 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
       }
 
       // @todo also check if _mo is current
-    case ReceivedMessage(HigherProposalReceived(_, higherId), sid) =>
+    case ReceivedMessage(HigherProposalReceived(mmo, higherId), sid) if mmo == paxosState.get.mo =>
       // higher proposal appeared while our has been voted on -> but we cannot back off now
       // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
       // we might overwrite some values
       // all in all, we cannot do much here
-      state[P2aSent].nacks += sid
+      state[Phase2].nacks += sid
       ()
 
     case P2Tick =>
-      val cst = state[P2aSent]
-      val msg = AcceptRequest(MessageOwner(cst._iid, cst._iid), cst.votedValue)
+      val cst = state[Phase2]
+      val msg = AcceptRequest(cst.mo, cst.votedValue)
       (0 until nodeCount).filter(cst.nacks.contains).foreach(id => {
         communicator ! SendUnicast(msg, id)
       })
 
     case Timeout =>
       /* timeout, we give up */
-      val st = state[P2aSent]
-      log.info(s"Timeout reached, aborting (iid: ${st._iid}, rid: ${st._mrr}")
+      log.info(s"Timeout reached, aborting: ${paxosState.get.mo}")
 
-      is = Idle()
+      paxosState = None
       context.become(idle)
       // @todo: good place to inform client we are free
 
   }
 
-  // @todo make short names longer
   // @todo handling of errant messages in all states
 
   // @todo: extract and test separatelly
@@ -273,11 +270,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
 
     largest.headOption
   }
-
-  case class TimerConf(key: String, msInterval: Int, msg: Any)
-  private val p1Conf = TimerConf("p1a", 200, P1Tick)
-  private val p2Conf = TimerConf("p2a", 200, P2Tick)
-  private val tConf = TimerConf("timeout", 2000, Timeout)
 
   def startTimer(conf: TimerConf) = {
     timers.startPeriodicTimer(conf.key, conf.msg, FiniteDuration(conf.msInterval, TimeUnit.MILLISECONDS))
