@@ -5,7 +5,7 @@ import java.util.concurrent.TimeUnit
 
 import agh.iosr.paxos.Messages._
 import agh.iosr.paxos.predef._
-import akka.actor.{Actor, ActorLogging, ActorRef, Timers}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
 
 import scala.collection._
 import scala.concurrent.duration.FiniteDuration
@@ -54,7 +54,8 @@ object Metadata {
 }
 
 object Proposer {
-
+  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId): Props =
+    Props(new Proposer(learner, nodeId, nodeCount))
 }
 
 class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
