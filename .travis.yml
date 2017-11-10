@@ -4,7 +4,9 @@ before_install: pushd paxos
 before_deploy:
   sbt "set test in assembly := {}" assembly;
   mkdir deploy-temp;
-  tar -czvf deploy-temp/app.tar.gz target/scala-2.12/paxos-iosr-assembly-*.jar;
+  pushd target/scala-2.12/;
+  tar -czvf ../../deploy-temp/app.tar.gz paxos-iosr-assembly-*.jar;
+  popd;
 
 deploy:
   provider: s3
