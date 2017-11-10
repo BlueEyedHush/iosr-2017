@@ -1,5 +1,6 @@
 package agh.iosr.paxos
 
+import java.util
 import java.util.concurrent.TimeUnit
 
 import agh.iosr.paxos.Messages._
@@ -45,7 +46,7 @@ object Metadata {
 
   // retransmission timer
 
-  case class Start(v: KeyValue)
+  case object Start
 
   case object P1Tick
   case object P2Tick
@@ -56,8 +57,9 @@ object Proposer {
 
 }
 
-class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with ActorLogging with Timers {
-  // @todo subscribe with learner
+class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
+  extends Actor with ActorLogging with Timers {
+
   import Metadata._
 
   private val minQuorumSize = nodeCount/2 + 1
@@ -67,9 +69,15 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
   private val idGen = new IdGenerator(nodeId)
 
   private var is: InstanceState = _
-
   private def state[T] = is.asInstanceOf[T]
 
+  private val rqQueue = new util.LinkedList[KeyValue]
+
+  override def preStart(): Unit = {
+    super.preStart()
+
+    learner ! LearnerSubscribe
+  }
 
   override def receive = {
     case Ready =>
@@ -79,14 +87,17 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
 
   def idle: Receive = {
     case KvsSend(key, value) =>
+      rqQueue.add(KeyValue(key, value))
       context.become(executing)
-      self ! Start(KeyValue(key, value))
+      self ! Start
   }
 
   def executing: Receive = {
-    case KvsSend(key, value) => ???
+    case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
 
-    case Start(v) =>
+    case Start if rqQueue.size() > 0 =>
+      val v = rqQueue.pop()
+
       val iid = mostRecentlySeenInstanceId + 1
       val rid = idGen.nextId()
       val mo = MessageOwner(iid, rid)
@@ -117,7 +128,8 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
 
                   is = Idle()
                   stopTimer(p1Conf)
-                  self ! Start(ourV)
+                  rqQueue.addFirst(ourV)
+                  self ! Start
                 case Promise(_, vr, ovv) =>
                   val st1a = state[P1aSent]
                   if (st1a.promises.contains(sid)) {
@@ -167,7 +179,7 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
 
   def waitingForResults: Receive = {
     // we wait for results of round we initiated and we have to make a decision - do we restart or value was voted for
-    case KvsSend(key, value) => ??? // @todo
+    case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
 
     case ValueLearned(iid, votedValue) =>
       val st = state[P2aSent]
@@ -189,8 +201,9 @@ class Proposer(val nodeId: NodeId, val nodeCount: NodeId) extends Actor with Act
            */
 
           is = Idle()
+          rqQueue.addFirst(st.ourValue)
           context.become(executing)
-          self ! Start(st.ourValue)
+          self ! Start
         }
 
         stopTimer(p2Conf)
