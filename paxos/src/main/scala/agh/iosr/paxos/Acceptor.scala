@@ -52,7 +52,7 @@ class Acceptor()
 
           runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, None, NULL_NODE_ID)) match {
             case InstanceState(lastParticipated, lastVoted, vote, lastRemote)
-              if roundId >= lastParticipated && (roundId != lastVoted || (value == vote && remoteId == lastRemote))=>
+              if roundId >= lastParticipated && (roundId != lastVoted || (vote.contains(value) && remoteId == lastRemote))=>
                 runningInstances(instanceId) = InstanceState(roundId, roundId, Some(value), remoteId)
                 highestInstance = math.max(highestInstance, instanceId)
                 communicator ! SendMulticast(Accepted(MessageOwner(instanceId, roundId), value))
