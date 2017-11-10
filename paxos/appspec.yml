@@ -1,0 +1,9 @@
+version: 0.0
+os: linux
+files:
+  - source: ./paxos-iosr-assembly*.jar
+    destination: ~/paxos-iosr/
+hooks:
+  ApplicationStart:
+    - location: aws-run.sh
+      timeout: 3600
