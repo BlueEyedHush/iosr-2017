@@ -4,25 +4,15 @@ import java.util
 
 import agh.iosr.paxos.Messages.{KvsGetRequest, KvsGetResponse, KvsSend}
 import agh.iosr.paxos.predef.Key
-import akka.actor.{Actor, ActorRef}
-import com.typesafe.config.Config
+import akka.actor.{Actor, ActorRef, Props}
 
 import scala.collection.mutable
 
-/**
-  * Actor which wires everything together
-  */
-class Kvs(config: Config) extends Actor {
-  private val (ipToId, idToIp) = ClusterInfo.nodeMapsFromConf()(config)
-  private val nodeCount = ipToId.size
-  private val myIp = ClusterInfo.myIpFromConf()(config)
-  private val myId = ipToId(myIp)
+object Kvs {
+  def props(learner: ActorRef, proposer: ActorRef): Props = Props(new Kvs(learner, proposer))
+}
 
-  private val learner = context.actorOf(LearnerActor.props())
-  private val proposer = context.actorOf(Proposer.props(learner, myId, nodeCount))
-  private val acceptor = context.actorOf(Acceptor.props())
-  private val communicator = context.actorOf(Communicator.props(Set(learner, proposer, acceptor), myIp, ipToId, idToIp))
-
+class Kvs(val learner: ActorRef, val proposer: ActorRef) extends Actor {
   private val requesters = mutable.Map[Key, util.LinkedList[ActorRef]]()
 
   override def receive = {
