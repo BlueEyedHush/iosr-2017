@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-java -jar ~/paxos-iosr/paxos-iosr-assembly*.jar
+java -jar /home/ubuntu/paxos-iosr.jar

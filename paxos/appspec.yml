@@ -1,8 +1,8 @@
 version: 0.0
 os: linux
 files:
-  - source: paxos-iosr-assembly*.jar
-    destination: ~/paxos-iosr/
+  - source: paxos-iosr.jar
+    destination: /home/ubuntu/
 hooks:
   ApplicationStart:
     - location: aws-run.sh
