@@ -32,7 +32,7 @@ class LearnerActor() extends Actor {
     case LearnerSubscribe =>
       subscribers += sender
 
-    case ReceivedMessage(Accepted(MessageOwner(instanceId, _), KeyValue(key, value)), _) =>
+    case ReceivedMessage(Accepted(RoundIdentifier(instanceId, _), KeyValue(key, value)), _) =>
       memory.put(key, (instanceId, value))
       subscribers.foreach {_ ! ValueLearned(instanceId, key, value)}
 

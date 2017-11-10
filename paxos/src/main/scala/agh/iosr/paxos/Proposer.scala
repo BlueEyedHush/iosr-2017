@@ -24,23 +24,22 @@ object Proposer {
   case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
 
   // @todo put this shit in companion object
-  // @todo rename mo to RoundIdentifier
   sealed trait PaxosInstanceState {
-    def mo: MessageOwner
+    def mo: RoundIdentifier
   }
 
   object PaxosInstanceState {
-    def unapply(pis: PaxosInstanceState): Option[MessageOwner] = Some(pis.mo)
+    def unapply(pis: PaxosInstanceState): Option[RoundIdentifier] = Some(pis.mo)
   }
 
   type PromiseMap = mutable.Map[NodeId, RPromise]
 
-  case class Phase1(mo: MessageOwner,
+  case class Phase1(mo: RoundIdentifier,
                     ourValue: KeyValue,
                     rejectors: mutable.Set[NodeId] = mutable.Set(),
                     promises: PromiseMap = mutable.Map[NodeId, RPromise]()) extends PaxosInstanceState
 
-  case class Phase2(mo: MessageOwner,
+  case class Phase2(mo: RoundIdentifier,
                     votedValue: KeyValue,
                     ourValue: KeyValue,
                     nacks: mutable.Set[NodeId] = mutable.Set()) extends PaxosInstanceState
@@ -103,7 +102,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
 
       val iid = mostRecentlySeenInstanceId + 1
       val rid = idGen.nextId()
-      val mo = MessageOwner(iid, rid)
+      val mo = RoundIdentifier(iid, rid)
 
       communicator ! SendMulticast(Prepare(mo))
       startTimer(p1Conf)
@@ -212,7 +211,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
         stopTimer(tConf)
       }
 
-      // @todo also check if _mo is current
     case ReceivedMessage(HigherProposalReceived(mmo, higherId), sid) if mmo == paxosState.get.mo =>
       // higher proposal appeared while our has been voted on -> but we cannot back off now
       // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise

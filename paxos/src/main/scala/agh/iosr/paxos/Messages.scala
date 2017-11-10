@@ -14,22 +14,22 @@ object Messages {
   case class ValueLearned(when: InstanceId, key: String, value: Value)
 
   sealed trait ConsensusMessage extends SendableMessage {
-    def mo: MessageOwner
+    def mo: RoundIdentifier
   }
 
   object ConsensusMessage {
-    def unapply(cm: ConsensusMessage): Option[MessageOwner] = Some(cm.mo)
+    def unapply(cm: ConsensusMessage): Option[RoundIdentifier] = Some(cm.mo)
   }
 
-  case class Prepare(mo: MessageOwner) extends ConsensusMessage
-  case class Promise(mo: MessageOwner, lastRoundVoted: RoundId, ov: Option[KeyValue]) extends ConsensusMessage
-  case class AcceptRequest(mo: MessageOwner, v: KeyValue) extends ConsensusMessage
-  case class Accepted(mo: MessageOwner, v: KeyValue) extends ConsensusMessage
+  case class Prepare(mo: RoundIdentifier) extends ConsensusMessage
+  case class Promise(mo: RoundIdentifier, lastRoundVoted: RoundId, ov: Option[KeyValue]) extends ConsensusMessage
+  case class AcceptRequest(mo: RoundIdentifier, v: KeyValue) extends ConsensusMessage
+  case class Accepted(mo: RoundIdentifier, v: KeyValue) extends ConsensusMessage
 
   /** NACK for phase 1 */
-  case class RoundTooOld(mo: MessageOwner, mostRecentKnown: InstanceId) extends ConsensusMessage
+  case class RoundTooOld(mo: RoundIdentifier, mostRecentKnown: InstanceId) extends ConsensusMessage
   /** NACK for phase 2 */
-  case class HigherProposalReceived(mo: MessageOwner, roundId: RoundId) extends ConsensusMessage
+  case class HigherProposalReceived(mo: RoundIdentifier, roundId: RoundId) extends ConsensusMessage
 
   case class LearnerQuestionForValue(requestId: Int, key: String) extends SendableMessage
   case class LearnerAnswerWithValue(requestId: Int, rememberedValue: Option[(InstanceId, Value)]) extends SendableMessage
