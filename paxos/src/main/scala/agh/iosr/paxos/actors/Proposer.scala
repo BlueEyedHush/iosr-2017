@@ -84,21 +84,34 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
 
   override def receive = {
     case Ready =>
+      println("Proposer:" + self + " @ Ready")
       communicator = sender()
       context.become(idle)
+      if (rqQueue.size() > 0) {
+        val v = rqQueue.pop()
+        println("%%%" + v)
+        self ! KvsSend(v.k,v.v)
+      }
+
+    case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
+      println("Proposer:" + self + " @ phase0/KvsSend")
   }
 
   def idle: Receive = {
     case KvsSend(key, value) =>
+      println("Proposer:" + self + " @ KvsSend")
       rqQueue.add(KeyValue(key, value))
       context.become(phase1)
       self ! Start
+
   }
 
   def phase1: Receive = {
     case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
+      println("Proposer:" + self + " @ phase1/KvsSend")
 
     case Start if rqQueue.size() > 0 =>
+      println("Proposer:" + self + " @ phase1/Start")
       val v = rqQueue.pop()
 
       val iid = mostRecentlySeenInstanceId + 1
@@ -112,6 +125,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
       paxosState = Some(Phase1(mo, v))
 
     case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) =>
+      println("Proposer:" + self + " @ phase1/ReceivedMessage")
       val Some(PaxosInstanceState(currentMo)) = paxosState
 
       if(messageMo == currentMo) {
@@ -119,6 +133,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
 
         m match {
           case RoundTooOld(_, mostRecent) =>
+            println("Proposer:" + self + " @ RoundTooOld")
             // @todo when we gain possibility of ID correction, modify it here
             // someone is already using this instance - we need to switch to new one
             // we didn't sent 2a yet, so we can simply abandon this instance and try for a new one
@@ -132,6 +147,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
             self ! Start
 
           case Promise(_, vr, ovv) =>
+            println("Proposer:" + self + " @ Promise")
             if (st.promises.contains(sid)) {
               log.info(s"Already got promise from $sid, must be a duplicate: $m")
             } else {
@@ -181,8 +197,10 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
   def phase2: Receive = {
     // we wait for results of round we initiated and we have to make a decision - do we restart or value was voted for
     case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
+      println("Proposer:" + self + " @ phase2/KvsSend")
 
     case ValueLearned(iid, k, v) =>
+      println("Proposer:" + self + " @ ValueLearned")
       val votedValue = KeyValue(k,v)
       val st = state[Phase2]
       if (st.mo.instanceId == iid) {
@@ -213,6 +231,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
       }
 
     case ReceivedMessage(HigherProposalReceived(mmo, higherId), sid) if mmo == paxosState.get.mo =>
+      println("Proposer:" + self + " @ HigherProposalReceived")
       // higher proposal appeared while our has been voted on -> but we cannot back off now
       // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
       // we might overwrite some values
@@ -221,6 +240,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
       ()
 
     case P2Tick =>
+      println("Proposer:" + self + " @ P2Tick")
       val cst = state[Phase2]
       val msg = AcceptRequest(cst.mo, cst.votedValue)
       (0 until nodeCount).filter(cst.nacks.contains).foreach(id => {
@@ -228,6 +248,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
       })
 
     case Timeout =>
+      println("Proposer:" + self + " @ Timeout")
       /* timeout, we give up */
       log.info(s"Timeout reached, aborting: ${paxosState.get.mo}")
 

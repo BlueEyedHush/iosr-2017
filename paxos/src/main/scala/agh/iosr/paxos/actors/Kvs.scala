@@ -17,8 +17,10 @@ class Kvs(val learner: ActorRef, val proposer: ActorRef) extends Actor {
 
   override def receive = {
     case m @ KvsSend(k ,v) => proposer ! m
+      println("Kvs:" + self + " @ KvsSend")
 
     case m @ KvsGetRequest(k) =>
+      println("Kvs:" + self + " @ KvsGetRequest")
       var alreadyQueried = true
       if (!requesters.contains(k)) {
         requesters += (k -> new util.LinkedList())
@@ -31,6 +33,7 @@ class Kvs(val learner: ActorRef, val proposer: ActorRef) extends Actor {
         learner ! m
 
     case m @ KvsGetResponse(k, _) =>
+      println("Kvs:" + self + " @ KvsGetResponse")
       requesters(k).forEach(_ ! m)
       requesters.remove(k)
   }

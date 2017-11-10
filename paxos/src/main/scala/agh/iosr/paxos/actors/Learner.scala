@@ -26,17 +26,22 @@ class Learner() extends Actor {
     case Ready =>
       communicator = sender()
       context.become(ready)
+      println("Learner:" + self + " @ Ready")
   }
 
   def ready: Receive = {
     case LearnerSubscribe() =>
       subscribers += sender
+      println("Learner:" + self + " @ Receive")
 
     case ReceivedMessage(Accepted(RoundIdentifier(instanceId, _), KeyValue(key, value)), _) =>
+      println("Learner:" + self + " @ Accepted")
       memory.put(key, (instanceId, value))
       subscribers.foreach {_ ! ValueLearned(instanceId, key, value)}
 
+
     case KvsGetRequest(key) =>
+      println("Learner:" + self + " @ KvsGetRequest")
       var requestId = rand.nextInt
       while (getRequests.contains(requestId)) requestId = rand.nextInt
 
@@ -47,9 +52,11 @@ class Learner() extends Actor {
       context.system.scheduler.scheduleOnce(3 seconds, self, LearnerLoopback(requestId))
 
     case ReceivedMessage(LearnerQuestionForValue(requestId, key), remoteId) =>
+      println("Learner:" + self + " @ LearnerQuestionForValue")
       communicator ! SendUnicast(LearnerAnswerWithValue(requestId, memory.get(key)), remoteId)
 
     case ReceivedMessage(LearnerAnswerWithValue(requestId, value), _) =>
+      println("Learner:" + self + " @ LearnerAnswerWithValue")
       val reqData = getRequests.get(requestId)
       reqData match {
         case Some(_) => reqData.get._3 += value
@@ -57,6 +64,7 @@ class Learner() extends Actor {
       }
 
     case LearnerLoopback(requestId) =>
+      println("Learner:" + self + " @ LearnerLoopback")
       val propsFromMap = getRequests.get(requestId)
       propsFromMap match {
         case Some(props) =>
