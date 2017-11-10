@@ -6,14 +6,14 @@ import scala.collection.immutable
 
 package object predef {
   type InstanceId = Int
+  val NULL_INSTANCE_ID: InstanceId = -1
 
-  type RoundId = Int
+  type RoundId = Long
   val NULL_ROUND: RoundId = -1
 
   type Value = Int
   type Key = String
-
-  case class KeyValue(key: Key, value: Value)
+  case class KeyValue(k: Key, v: Value)
 
   /**
     * NodeId's are global across the cluster, but this guarantee relies on uniform order in config
@@ -28,5 +28,5 @@ package object predef {
   type IdToIpMap = immutable.Map[NodeId, InetSocketAddress]
   type IpToIdMap = immutable.Map[InetSocketAddress, NodeId]
 
-  case class MessageOwner(instanceId: InstanceId, roundId: RoundId)
+  case class RoundIdentifier(instanceId: InstanceId, roundId: RoundId)
 }

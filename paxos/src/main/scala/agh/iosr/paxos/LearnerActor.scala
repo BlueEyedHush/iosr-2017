@@ -1,14 +1,17 @@
 package agh.iosr.paxos
 
-import akka.actor._
 import agh.iosr.paxos.Messages._
 import agh.iosr.paxos.predef._
+import akka.actor._
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
-import scala.util.Random
 import scala.concurrent.duration._
+import scala.util.Random
 
+object LearnerActor {
+  def props(): Props = Props(new LearnerActor)
+}
 
 class LearnerActor() extends Actor {
   var subscribers = new ListBuffer[ActorRef]()
@@ -29,7 +32,7 @@ class LearnerActor() extends Actor {
     case LearnerSubscribe =>
       subscribers += sender
 
-    case ReceivedMessage(Accepted(MessageOwner(instanceId, _), KeyValue(key, value)), _) =>
+    case ReceivedMessage(Accepted(RoundIdentifier(instanceId, _), KeyValue(key, value)), _) =>
       memory.put(key, (instanceId, value))
       subscribers.foreach {_ ! ValueLearned(instanceId, key, value)}
 

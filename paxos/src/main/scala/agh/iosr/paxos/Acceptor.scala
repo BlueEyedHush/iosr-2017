@@ -18,7 +18,7 @@ class Acceptor()
 
   var communicator: ActorRef = _
   var runningInstances: mutable.Map[InstanceId, InstanceState] = mutable.Map.empty
-  var highestInstance: InstanceId = NULL_ROUND
+  var highestInstance: InstanceId = NULL_INSTANCE_ID
 
   override def receive: Receive = {
     case Ready =>
@@ -30,35 +30,35 @@ class Acceptor()
     case ReceivedMessage(data, remoteId) =>
 
       data match {
-        case Prepare(MessageOwner(instanceId, roundId)) =>
+        case Prepare(RoundIdentifier(instanceId, roundId)) =>
 
           runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, None, NULL_NODE_ID)) match {
             case InstanceState(NULL_ROUND, _, _, _) =>
               runningInstances(instanceId) = InstanceState(roundId, NULL_ROUND, None, remoteId)
               highestInstance = math.max(highestInstance, instanceId)
-              communicator ! SendUnicast(Promise(MessageOwner(instanceId, roundId), NULL_ROUND, None), remoteId)
+              communicator ! SendUnicast(Promise(RoundIdentifier(instanceId, roundId), NULL_ROUND, None), remoteId)
 
             case InstanceState(lastParticipated, _, _, lastRemote)
               if roundId <= lastParticipated && remoteId != lastRemote =>
-                communicator ! SendUnicast(RoundTooOld(MessageOwner(instanceId, roundId), highestInstance), remoteId)
+                communicator ! SendUnicast(RoundTooOld(RoundIdentifier(instanceId, roundId), highestInstance), remoteId)
 
             case InstanceState(lastParticipated, lastVoted, vote, lastRemote)
               if roundId > lastParticipated || (roundId == lastParticipated && remoteId == lastRemote) =>
                 runningInstances(instanceId) = InstanceState(roundId, lastVoted, vote, remoteId)
-                communicator ! SendUnicast(Promise(MessageOwner(instanceId, roundId), lastVoted, vote), remoteId)
+                communicator ! SendUnicast(Promise(RoundIdentifier(instanceId, roundId), lastVoted, vote), remoteId)
           }
 
-        case AcceptRequest(MessageOwner(instanceId, roundId), value) =>
+        case AcceptRequest(RoundIdentifier(instanceId, roundId), value) =>
 
           runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, None, NULL_NODE_ID)) match {
             case InstanceState(lastParticipated, lastVoted, vote, lastRemote)
               if roundId >= lastParticipated && (roundId != lastVoted || (vote.contains(value) && remoteId == lastRemote))=>
                 runningInstances(instanceId) = InstanceState(roundId, roundId, Some(value), remoteId)
                 highestInstance = math.max(highestInstance, instanceId)
-                communicator ! SendMulticast(Accepted(MessageOwner(instanceId, roundId), value))
+                communicator ! SendMulticast(Accepted(RoundIdentifier(instanceId, roundId), value))
 
             case InstanceState(lastParticipated, _, _, _) =>
-              communicator ! SendUnicast(HigherProposalReceived(MessageOwner(instanceId, roundId), lastParticipated), remoteId)
+              communicator ! SendUnicast(HigherProposalReceived(RoundIdentifier(instanceId, roundId), lastParticipated), remoteId)
           }
 
         case FallAsleep => context.become(down)

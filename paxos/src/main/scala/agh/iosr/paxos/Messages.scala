@@ -6,23 +6,30 @@ trait SendableMessage
 object Messages {
   import agh.iosr.paxos.predef._
 
-  case class KvsSend(key: String, value: Value)
-  case class KvsGetRequest(key: String)
-  case class KvsGetResponse(key: String, value: Option[Value])
+  case class KvsSend(key: Key, value: Value)
+  case class KvsGetRequest(key: Key)
+  case class KvsGetResponse(key: Key, value: Option[Value])
 
   case class LearnerSubscribe()
   case class ValueLearned(when: InstanceId, key: String, value: Value)
 
-  case class Prepare(mo: MessageOwner) extends SendableMessage
-  case class Promise(mo: MessageOwner, mostRecentRoundVoted: RoundId, mostRecentValue: Option[KeyValue])
-    extends SendableMessage
-  case class AcceptRequest(mo: MessageOwner, value: KeyValue) extends SendableMessage
-  case class Accepted(mo: MessageOwner, value: KeyValue) extends SendableMessage
+  sealed trait ConsensusMessage extends SendableMessage {
+    def mo: RoundIdentifier
+  }
+
+  object ConsensusMessage {
+    def unapply(cm: ConsensusMessage): Option[RoundIdentifier] = Some(cm.mo)
+  }
+
+  case class Prepare(mo: RoundIdentifier) extends ConsensusMessage
+  case class Promise(mo: RoundIdentifier, lastRoundVoted: RoundId, ov: Option[KeyValue]) extends ConsensusMessage
+  case class AcceptRequest(mo: RoundIdentifier, v: KeyValue) extends ConsensusMessage
+  case class Accepted(mo: RoundIdentifier, v: KeyValue) extends ConsensusMessage
 
   /** NACK for phase 1 */
-  case class RoundTooOld(mo: MessageOwner, mostRecentKnown: InstanceId) extends SendableMessage
+  case class RoundTooOld(mo: RoundIdentifier, mostRecentKnown: InstanceId) extends ConsensusMessage
   /** NACK for phase 2 */
-  case class HigherProposalReceived(mo: MessageOwner, roundId: RoundId) extends SendableMessage
+  case class HigherProposalReceived(mo: RoundIdentifier, roundId: RoundId) extends ConsensusMessage
 
   case class LearnerQuestionForValue(requestId: Int, key: String) extends SendableMessage
   case class LearnerAnswerWithValue(requestId: Int, rememberedValue: Option[(InstanceId, Value)]) extends SendableMessage
