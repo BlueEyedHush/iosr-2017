@@ -25,6 +25,7 @@ class Communicator(subscribers: Set[ActorRef], me: InetSocketAddress, ipToId: Ip
 
   def receive = {
     case Udp.Bound(_) =>
+      subscribers.foreach(_ ! Ready)
       context.become(ready(sender()))
   }
 

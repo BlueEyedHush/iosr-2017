@@ -182,7 +182,8 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
     // we wait for results of round we initiated and we have to make a decision - do we restart or value was voted for
     case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
 
-    case ValueLearned(iid, votedValue) =>
+    case ValueLearned(iid, k, v) =>
+      val votedValue = KeyValue(k,v)
       val st = state[P2aSent]
       if (st._iid == iid) {
         // OK, results of our round are published

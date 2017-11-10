@@ -11,9 +11,11 @@ object Messages {
   case class KvsGetRequest(key: Key)
   case class KvsGetResponse(value: Option[Value])
 
+  case class LearnerSubscribe()
+  case class ValueLearned(when: InstanceId, key: String, value: Value)
+
   // @todo cleanup this mess
   // @todo do we really need roundId in MessageOwner?
-
 
   class ConsensusMessage(val mo: MessageOwner) extends SendableMessage
   case class Prepare(_mo: MessageOwner) extends ConsensusMessage(_mo)
@@ -26,8 +28,12 @@ object Messages {
   /** NACK for phase 2 */
   case class HigherProposalReceived(_mo: MessageOwner, roundId: RoundId) extends ConsensusMessage(_mo)
 
-  case class LearnerSubscribe()
-  case class ValueLearned(when: InstanceId, v: KeyValue)
+  case class LearnerQuestionForValue(requestId: Int, key: String) extends SendableMessage
+  case class LearnerAnswerWithValue(requestId: Int, rememberedValue: Option[(InstanceId, Value)]) extends SendableMessage
+  case class LearnerLoopback(requestId: Int)
+
+  case object FallAsleep extends SendableMessage
+  case object WakeUp extends SendableMessage
 }
 
 

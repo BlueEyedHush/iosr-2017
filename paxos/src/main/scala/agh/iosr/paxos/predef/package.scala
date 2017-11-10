@@ -6,6 +6,7 @@ import scala.collection.immutable
 
 package object predef {
   type InstanceId = Int
+  val NULL_INSTANCE_ID: InstanceId = -1
 
   type RoundId = Long
   val NULL_ROUND: RoundId = -1
