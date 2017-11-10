@@ -34,7 +34,7 @@ class Acceptor()
 
       data match {
         case Prepare(RoundIdentifier(instanceId, roundId)) =>
-          println("Acceptor:" + self + " @ Prepare(RoundIdentifier)")
+          println(s"Acceptor:" + self + " @ {Prepare(RoundIdentifier("+instanceId+", "+roundId+"))}")
 
           runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, None, NULL_NODE_ID)) match {
             case InstanceState(NULL_ROUND, _, _, _) =>

@@ -167,6 +167,9 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
                 startTimer(tConf)
               }
             }
+
+
+          case _ =>
         }
 
       } else {
