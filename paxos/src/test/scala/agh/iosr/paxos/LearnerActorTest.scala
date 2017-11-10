@@ -68,7 +68,7 @@ class LearnerActorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
         case SendUnicast(msg, 1) => testCommunicator2.send(actor, ReceivedMessage(msg, 3))
       }
 
-      expectMsg(10 seconds, KvsGetResponse(Some(6)))
+      expectMsg(10 seconds, KvsGetResponse("someKey", Some(6)))
     }
 
     "not perform any action when down and continue work when waken up" in {

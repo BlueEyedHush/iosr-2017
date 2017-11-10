@@ -69,9 +69,9 @@ class LearnerActor() extends Actor {
             case _ =>
           }
           if (currentMaxInst != -1)
-            props._1 ! KvsGetResponse(Option(currentValue))
+            props._1 ! KvsGetResponse(props._2, Option(currentValue))
           else
-            props._1 ! KvsGetResponse(None)
+            props._1 ! KvsGetResponse(props._2, None)
         case None =>
       }
       getRequests.remove(requestId)

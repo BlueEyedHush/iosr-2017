@@ -1,11 +1,10 @@
 package agh.iosr.paxos
 
+
 trait SendableMessage
 
 object Messages {
   import agh.iosr.paxos.predef._
-
-
 
   case class KvsSend(key: Key, value: Value)
   case class KvsGetRequest(key: Key)
@@ -35,5 +34,3 @@ object Messages {
   case object FallAsleep extends SendableMessage
   case object WakeUp extends SendableMessage
 }
-
-
