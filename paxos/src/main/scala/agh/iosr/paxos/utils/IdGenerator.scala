@@ -1,4 +1,4 @@
-package agh.iosr.paxos
+package agh.iosr.paxos.utils
 
 import agh.iosr.paxos.predef.{NodeId, RoundId}
 

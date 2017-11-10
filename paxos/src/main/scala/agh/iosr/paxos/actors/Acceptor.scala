@@ -50,7 +50,6 @@ class Acceptor()
           }
 
         case AcceptRequest(RoundIdentifier(instanceId, roundId), value) =>
-
           runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, None, NULL_NODE_ID)) match {
             case InstanceState(lastParticipated, lastVoted, vote, lastRemote)
               if roundId >= lastParticipated && (roundId != lastVoted || (vote.contains(value) && remoteId == lastRemote))=>

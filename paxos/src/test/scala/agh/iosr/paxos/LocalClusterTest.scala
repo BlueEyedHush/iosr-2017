@@ -2,7 +2,7 @@ package agh.iosr.paxos
 
 import agh.iosr.paxos.actors.{Communicator, Ready, ReceivedMessage, SendUnicast}
 import agh.iosr.paxos.messages.Messages.{AcceptRequest, Accepted, LearnerSubscribe, ValueLearned}
-import agh.iosr.paxos.predef.{KeyValue, MessageOwner}
+import agh.iosr.paxos.predef.{KeyValue, RoundIdentifier}
 import agh.iosr.paxos.utils.{ClusterInfo, LocalClusterSetupManager}
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
@@ -35,15 +35,13 @@ class LocalClusterTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       manager.setup(idToIp)
 
       val testCommunicator = system.actorOf(Communicator.props(Set(self), myAddress, ipToId, idToIp))
-      expectMsg(Ready)
 
       manager.getNodeActor(0, "learner") match {
         case Some(actorRef) => actorRef ! LearnerSubscribe()
         case None => throw new IllegalArgumentException()
       }
 
-      testCommunicator ! SendUnicast(AcceptRequest(MessageOwner(instanceId, roundId), KeyValue(key, value)), 1)
-      expectMsg(ReceivedMessage(Accepted(MessageOwner(instanceId, roundId), KeyValue(key, value)), 1))
+      testCommunicator ! SendUnicast(AcceptRequest(RoundIdentifier(instanceId, roundId), KeyValue(key, value)), 1)
 
       expectMsg(ValueLearned(instanceId, key, value))
 
