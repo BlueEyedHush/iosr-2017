@@ -8,7 +8,7 @@ object Messages {
 
   case class KvsSend(key: String, value: Value)
   case class KvsGetRequest(key: String)
-  case class KvsGetResponse(value: Option[Value])
+  case class KvsGetResponse(key: String, value: Option[Value])
 
   case class LearnerSubscribe()
   case class ValueLearned(when: InstanceId, key: String, value: Value)
