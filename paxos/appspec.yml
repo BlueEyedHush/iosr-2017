@@ -1,7 +1,7 @@
 version: 0.0
 os: linux
 files:
-  - source: ./paxos-iosr-assembly*.jar
+  - source: paxos-iosr-assembly*.jar
     destination: ~/paxos-iosr/
 hooks:
   ApplicationStart:

@@ -9,7 +9,7 @@ before_deploy:
   cp deploy/aws-run.sh tar-temp;
   mkdir deploy-temp;
   pushd tar-temp;
-  tar -czvf ../deploy-temp/app.tar.gz ./*;
+  tar -czvf ../deploy-temp/app.tar.gz *;
   popd;
 
 deploy:
