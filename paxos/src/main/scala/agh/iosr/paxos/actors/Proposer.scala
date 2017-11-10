@@ -91,7 +91,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     super.preStart()
 
     // @todo learner doesn't send anything back, so this might be susceptible to races
-    learner ! LearnerSubscribe
+    learner ! LearnerSubscribe()
   }
 
   override def receive = {
