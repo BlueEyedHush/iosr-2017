@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-echo "Executed!"
+java -jar ~/paxos-iosr/paxos-iosr-assembly*.jar
