@@ -2,11 +2,10 @@ package agh.iosr.paxos
 
 import agh.iosr.paxos.actors.{Communicator, Ready, ReceivedMessage, SendUnicast}
 import agh.iosr.paxos.messages.Messages.{AcceptRequest, Accepted, LearnerSubscribe, ValueLearned}
-import agh.iosr.paxos.predef.{KeyValue, RoundIdentifier}
+import agh.iosr.paxos.predef.{IpToIdMap, KeyValue, RoundIdentifier}
 import agh.iosr.paxos.utils.{ClusterInfo, ElementNotFound, LocalClusterSetupManager}
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
-import com.typesafe.config.{Config, ConfigFactory}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
 class LocalClusterTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
@@ -19,24 +18,26 @@ class LocalClusterTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
   "Learners and acceptors" must {
 
     "communicate with each other" in {
-      implicit val config: Config = ConfigFactory.load("local-cluster-test.conf")
+        // @todo move much of that logic to manager
 
       val instanceId = 8
       val roundId = 4
       val key = "TestKey"
       val value = 14
 
-      val myAddress = ClusterInfo.toInetSocketAddress("localhost:9992").get
-      val (_, idToIp) = ClusterInfo.nodeMapsFromConf()
-      val testIdToIp = Map(-99 -> myAddress)
-      val combinedIdToIp = idToIp ++ testIdToIp
-      val combinedIpToId = combinedIdToIp.map(_.swap)
+      val clusterIdToIp: IpToIdMap = List(
+        "localhost:2550",
+        "localhost:2551",
+        "localhost:2552",
+      ).map(ClusterInfo.toInetSocketAddress(_).get).zipWithIndex.toMap
+      val listener = ClusterInfo.toInetSocketAddress("localhost:9992").get
 
-      val manager = new LocalClusterSetupManager()
-      manager.setup(idToIp, testIdToIp)
+      val manager = new LocalClusterSetupManager(clusterIdToIp, listener)
+      manager.setup()
 
+      val (combinedIpToIdMap, combinedIdToIpMap) = manager.getCombinedMaps()
       val testSubscriber = TestProbe()
-      val testCommunicator = system.actorOf(Communicator.props(Set(testSubscriber.ref), myAddress, combinedIpToId, combinedIdToIp))
+      val testCommunicator = system.actorOf(Communicator.props(Set(testSubscriber.ref), listener, combinedIpToIdMap, combinedIdToIpMap))
       testSubscriber.expectMsg(Ready)
 
       val nodeId = 1
@@ -51,7 +52,7 @@ class LocalClusterTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
       expectMsg(ValueLearned(instanceId, key, value))
 
-      manager.terminate(idToIp)
+      manager.terminate()
     }
   }
 
