@@ -1,10 +1,11 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.Messages._
-import agh.iosr.paxos.predef._
+import agh.iosr.paxos.actors._
 import akka.actor.{ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+import agh.iosr.paxos.messages.Messages._
+import agh.iosr.paxos.predef._
 
 import scala.concurrent.duration._
 
@@ -19,10 +20,10 @@ class LearnerActorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
     "successfully sent learned value to all subscribers" in {
       val testCommunicator = TestProbe()
-      val actor = system.actorOf(Props(new LearnerActor()))
+      val actor = system.actorOf(Props(new Learner()))
       testCommunicator.send(actor, Ready)
 
-      actor ! LearnerSubscribe
+      actor ! LearnerSubscribe()
 
       val instanceId = 3
       val key = "String"
@@ -33,9 +34,9 @@ class LearnerActorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
     }
 
     "handle 'get' operation properly" in {
-      val actor = system.actorOf(Props(new LearnerActor()))
-      val subActor1 = system.actorOf(Props(new LearnerActor()))
-      val subActor2 = system.actorOf(Props(new LearnerActor()))
+      val actor = system.actorOf(Props(new Learner()))
+      val subActor1 = system.actorOf(Props(new Learner()))
+      val subActor2 = system.actorOf(Props(new Learner()))
 
       val testCommunicator = TestProbe()
       val testCommunicator1 = TestProbe()
@@ -73,10 +74,10 @@ class LearnerActorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
 
     "not perform any action when down and continue work when waken up" in {
       val testCommunicator = TestProbe()
-      val actor = system.actorOf(Props(new LearnerActor()))
+      val actor = system.actorOf(Props(new Learner()))
       testCommunicator.send(actor, Ready)
 
-      actor ! LearnerSubscribe
+      actor ! LearnerSubscribe()
 
       val instanceId = 3
       val key = "String"

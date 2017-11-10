@@ -1,5 +1,8 @@
 package agh.iosr.paxos
 
+import agh.iosr.paxos.actors._
+import agh.iosr.paxos.utils._
+
 import org.scalatest.{FreeSpec, Matchers}
 
 

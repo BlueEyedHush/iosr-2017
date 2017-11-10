@@ -1,6 +1,7 @@
-package agh.iosr.paxos
+package agh.iosr.paxos.actors
 
-import agh.iosr.paxos.Messages._
+import agh.iosr.paxos._
+import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.predef._
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 
@@ -49,7 +50,6 @@ class Acceptor()
           }
 
         case AcceptRequest(RoundIdentifier(instanceId, roundId), value) =>
-
           runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, None, NULL_NODE_ID)) match {
             case InstanceState(lastParticipated, lastVoted, vote, lastRemote)
               if roundId >= lastParticipated && (roundId != lastVoted || (vote.contains(value) && remoteId == lastRemote))=>

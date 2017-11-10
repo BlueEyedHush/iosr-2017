@@ -1,8 +1,8 @@
-package agh.iosr.paxos
+package agh.iosr.paxos.actors
 
 import java.util
 
-import agh.iosr.paxos.Messages.{KvsGetRequest, KvsGetResponse, KvsSend}
+import agh.iosr.paxos.messages.Messages.{KvsGetRequest, KvsGetResponse, KvsSend}
 import agh.iosr.paxos.predef.Key
 import akka.actor.{Actor, ActorRef, Props}
 

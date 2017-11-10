@@ -1,6 +1,6 @@
-package agh.iosr.paxos
+package agh.iosr.paxos.actors
 
-import agh.iosr.paxos.Messages._
+import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.predef._
 import akka.actor._
 
@@ -9,11 +9,11 @@ import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration._
 import scala.util.Random
 
-object LearnerActor {
-  def props(): Props = Props(new LearnerActor)
+object Learner {
+  def props(): Props = Props(new Learner)
 }
 
-class LearnerActor() extends Actor {
+class Learner() extends Actor {
   var subscribers = new ListBuffer[ActorRef]()
   var memory: mutable.HashMap[String, (InstanceId, Value)] = mutable.HashMap.empty
   var getRequests: mutable.HashMap[Int, (ActorRef, String, ListBuffer[Option[(InstanceId, Value)]])] = mutable.HashMap.empty
@@ -29,7 +29,7 @@ class LearnerActor() extends Actor {
   }
 
   def ready: Receive = {
-    case LearnerSubscribe =>
+    case LearnerSubscribe() =>
       subscribers += sender
 
     case ReceivedMessage(Accepted(RoundIdentifier(instanceId, _), KeyValue(key, value)), _) =>

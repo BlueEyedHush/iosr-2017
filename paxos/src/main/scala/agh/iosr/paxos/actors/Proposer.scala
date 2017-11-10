@@ -1,10 +1,11 @@
-package agh.iosr.paxos
+package agh.iosr.paxos.actors
 
 import java.util
 import java.util.concurrent.TimeUnit
 
-import agh.iosr.paxos.Messages._
+import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.predef._
+import agh.iosr.paxos.utils._
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
 
 import scala.collection._
@@ -90,7 +91,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     super.preStart()
 
     // @todo learner doesn't send anything back, so this might be susceptible to races
-    learner ! LearnerSubscribe
+    learner ! LearnerSubscribe()
   }
 
   override def receive = {
