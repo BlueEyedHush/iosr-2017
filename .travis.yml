@@ -1,4 +1,16 @@
 language: scala
 before_install: cd paxos
 
+before-deploy:
+  sbt assembly
+  tar -czvf ../app.tar.gz target/scala-2.12/paxos-iosr-assembly-*.jar
 
+deploy:
+  provider: s3
+  access_key_id: "$AWS_ACCESS_KEY"
+  secret_access_key: "$AWS_SECRET_KEY"
+  bucket: "iosr"
+  skip_cleanup: true
+  upload-dir: travis-builds
+  on:
+    branch: master, aws-deploy # remove aws-deploy!
