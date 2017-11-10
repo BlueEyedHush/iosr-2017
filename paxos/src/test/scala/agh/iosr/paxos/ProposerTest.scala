@@ -1,13 +1,13 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.Messages._
-import agh.iosr.paxos.Proposer._
+import agh.iosr.paxos.messages.Messages._
+import agh.iosr.paxos.actors.Proposer._
+import agh.iosr.paxos.actors.{Proposer, Ready, ReceivedMessage}
 import agh.iosr.paxos.predef._
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll, Matchers, WordSpecLike}
 
-import scala.concurrent.duration._
 
 class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
   with WordSpecLike with Matchers with BeforeAndAfterAll with BeforeAndAfter {
@@ -25,7 +25,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
 
   override def beforeAll(): Unit = {
     testProposer = system.actorOf(Proposer.props(testLearner.ref, pNodeId, nodeCount, testLogger.ref))
-    testLearner.expectMsg(LearnerSubscribe)
+    testLearner.expectMsg(LearnerSubscribe())
     communicateProposer(Ready)
   }
 

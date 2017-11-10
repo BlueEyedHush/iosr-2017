@@ -1,6 +1,7 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.Messages._
+import agh.iosr.paxos.actors.Kvs
+import agh.iosr.paxos.messages.Messages._
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll, Matchers, WordSpecLike}
