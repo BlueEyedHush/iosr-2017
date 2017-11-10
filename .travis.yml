@@ -1,9 +1,10 @@
 language: scala
-before_install: cd paxos
+before_install: pushd paxos
 
-before-deploy:
+before_deploy:
   sbt assembly
-  tar -czvf ../app.tar.gz target/scala-2.12/paxos-iosr-assembly-*.jar
+  mkdir deploy-temp
+  tar -czvf deploy-temp/app.tar.gz target/scala-2.12/paxos-iosr-assembly-*.jar
 
 deploy:
   provider: s3
@@ -12,3 +13,4 @@ deploy:
   bucket: "iosr"
   skip_cleanup: true
   upload-dir: travis-builds
+  local-dir: deploy-temp/
