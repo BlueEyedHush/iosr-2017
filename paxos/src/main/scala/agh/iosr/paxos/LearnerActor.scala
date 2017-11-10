@@ -9,6 +9,9 @@ import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration._
 import scala.util.Random
 
+object LearnerActor {
+  def props(): Props = Props(new LearnerActor)
+}
 
 class LearnerActor() extends Actor {
   var subscribers = new ListBuffer[ActorRef]()
