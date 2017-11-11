@@ -57,6 +57,7 @@ object Proposer {
   private val tConf = TimerConf("timeout", 2000, Timeout)
 
   trait LogMessage
+  case class CommInitialized(comm: ActorRef) extends LogMessage
   case class ContextChange(to: String) extends LogMessage
   case class PromiseDuplicate(cm: ConsensusMessage) extends LogMessage
   case class RequestReceived(req: KeyValue) extends LogMessage
@@ -98,6 +99,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     case Ready =>
       communicator = sender()
       context.become(idle)
+      logg(CommInitialized(communicator))
   }
 
   def idle: Receive = {

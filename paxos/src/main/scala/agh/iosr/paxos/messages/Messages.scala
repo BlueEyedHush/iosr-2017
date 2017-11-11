@@ -9,6 +9,7 @@ object Messages {
   case class KvsGetRequest(key: Key)
   case class KvsGetResponse(key: Key, value: Option[Value])
 
+  // @todo make this case object
   case class LearnerSubscribe()
   case class ValueLearned(when: InstanceId, key: String, value: Value)
 
