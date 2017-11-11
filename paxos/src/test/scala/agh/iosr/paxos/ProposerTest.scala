@@ -1,6 +1,6 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.actors.{Proposer, Ready, ReceivedMessage, SendMulticast}
+import agh.iosr.paxos.actors._
 import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.predef._
 import agh.iosr.paxos.utils.IdGenerator
@@ -21,10 +21,12 @@ class ProposerTestHelper(val nodeCount: NodeId) {
   def sendEmptyP1Bs()(implicit p: ActorRef, currentRid: RoundIdentifier) = ???
   def sendValuedP1Bs(pval: KeyValue)(implicit p: ActorRef, currentRid: RoundIdentifier) = ???
   def sendValuedP1BsWithHigherRoundId(pval: KeyValue)(implicit p: ActorRef, currentRid: RoundIdentifier) = ???
+  def sendP1BsFrom(nodes: List[NodeId], v: Option[KeyValue])(implicit p: ActorRef, currentRid: RoundIdentifier) = ???
   def sendValueChosen(v: KeyValue)(implicit p: ActorRef, currentRid: RoundIdentifier) = ???
   def sendP2bHigherProposalNack(optionId: Option[RoundIdentifier] = None)(implicit p: ActorRef, currentRid: RoundIdentifier) = {
     // deduce round identifier and use one higher
   }
+  def sendP2bHigherProposalNack(fromWhom: List[NodeId])(implicit p: ActorRef, currentRid: RoundIdentifier) = ???
 
   def takeThroughWholeRound()(implicit p: ActorRef) = {
     val v = KeyValue("dummy", 1)
@@ -56,10 +58,19 @@ object CommTestHelper {
       case SendMulticast(AcceptRequest(_, v)) => true
     }
   }
+
+  def expect2a(comm: TestProbe) = {
+    comm.expectMsgPF() {
+      case SendMulticast(AcceptRequest(_, _)) => true
+    }
+  }
 }
 
 class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
   with FreeSpecLike with Matchers with BeforeAndAfterAll with BeforeAndAfter {
+
+  val RETRANSMISSION_TIMEOUT = 200 // in ms
+  val INSTANCE_TIMEOUT = 2000 // in ms
 
   import Proposer._
 
@@ -207,7 +218,55 @@ class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
     }
 
     "should when timers expire" - {
+      import scala.concurrent.duration._
 
+      implicit val currentRid = startMoForNode0
+      val rt = RETRANSMISSION_TIMEOUT
+      val sent = List(1,2)
+      val didntSent = List(3)
+
+      "while waiting for 1Bs" - {
+        val (logger, comm, proposer) = helper.create()
+        helper.sendKvsGet(ourValue)
+        CommTestHelper.expectInstanceStarted(ourValue, comm)
+        helper.sendP1BsFrom(sent, None)
+
+        "retransmit to those that didn't respond (and only those)" in {
+          within (0.75*rt millis, 1.25*rt millis) {
+            comm.expectMsgAllOf(didntSent.map(nid => SendUnicast(Prepare(currentRid), nid)))
+          }
+        }
+      }
+
+      "while waiting for vote result" - {
+        def prepareActor() = {
+          val r @ (logger, comm, proposer) = helper.create()
+          helper.sendKvsGet(ourValue)
+          CommTestHelper.expectInstanceStarted(ourValue, comm)
+          helper.sendEmptyP1Bs()
+          CommTestHelper.expect2a(comm)
+          helper.sendP2bHigherProposalNack(sent)
+          r
+        }
+
+        "retransmit to those that didn't respond" in {
+          val (_, comm, proposer) = prepareActor()
+
+          within (0.75*rt millis, 1.25*rt millis) {
+            comm.expectMsgAllOf(didntSent.map(nid => SendUnicast(AcceptRequest(currentRid, ourValue), nid)))
+          }
+        }
+
+        "abandon ??? if sufficiently long time elapses" in {
+          val (logger, _, proposer) = prepareActor()
+
+          within(0.75*INSTANCE_TIMEOUT millis, 1.25*INSTANCE_TIMEOUT millis) {
+            logger.receiveWhile() {
+              case InstanceTimeout => true
+            }
+          }
+        }
+      }
     }
 
     "in case of message from different instance" - {
@@ -225,6 +284,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       * - take fully through the round
       * - helper (take actor to given state)
       * - move textual logging to listener actor
+      * - look through logger if it responds consistently
       *
       * ToDo:
       * - rejects messages from older instances, but notices higher ones and updates counte accordingly
@@ -243,14 +303,16 @@ class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       *   - +higher id reported in 1B - abandon and start new instance
       *   - +higher id response in 2B - wait patiently for voting results, then restart (should be-> immediatelly abandon instance,
       *     try new one)
-      *   - no response to 1A -> retransmissions
-      *   - no reponse to election result -> 2A retransmission
-      *   - no retransmission to those that responded
+      *   - +no response to 1A -> retransmissions
+      *   - +no reponse to election result -> 2A retransmission
+      *   - +no retransmission to those that responded
+      *   - +instance timeout
       *   - handling of duplicate messages
       *     - multiple 1B and 2B from the same node should be ignored (but their values should be probably reported)
       *   - upon learning:
       *     - about success: new value taken
       *     - about failure: retrying with higher instance id
+    *     - comprehensive, expectMessagesAllOf test
       *
       *
       */

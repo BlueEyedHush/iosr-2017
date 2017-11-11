@@ -69,6 +69,7 @@ object Proposer {
   case class IgnoringRound(instance: InstanceId, ignored: RoundId, current: RoundId) extends LogMessage
   case class InstanceSuccessful(instance: InstanceId) extends LogMessage
   case class InstanceChoseWrongValue(instance: InstanceId, value: KeyValue) extends LogMessage
+  case object InstanceTimeout extends LogMessage
 }
 
 // @todo logger - null to Option
@@ -262,6 +263,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     case Timeout =>
       /* timeout, we give up */
       log.info(s"Timeout reached, aborting: ${paxosState.get.mo}")
+      logg(InstanceTimeout)
 
       paxosState = None
       context.become(idle)
