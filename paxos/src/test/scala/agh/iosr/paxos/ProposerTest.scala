@@ -18,17 +18,18 @@ class ProposerTestHelper(val nodeCount: NodeId) {
 
   }
 
-  def sendEmptyP1Bs()(implicit p: ActorRef, rid: RoundIdentifier) = ???
-  def sendValuedP1Bs(pval: KeyValue)(implicit p: ActorRef, rid: RoundIdentifier) = ???
-  def sendValueChosen(v: KeyValue)(implicit p: ActorRef, rid: RoundIdentifier) = ???
+  def sendEmptyP1Bs()(implicit p: ActorRef, currentRid: RoundIdentifier) = ???
+  def sendValuedP1Bs(pval: KeyValue)(implicit p: ActorRef, currentRid: RoundIdentifier) = ???
+  def sendValuedP1BsWithHigherRoundId(pval: KeyValue)(implicit p: ActorRef, currentRid: RoundIdentifier) = ???
+  def sendValueChosen(v: KeyValue)(implicit p: ActorRef, currentRid: RoundIdentifier) = ???
+  def sendP2bHigherProposalNack(optionId: Option[RoundIdentifier] = None)(implicit p: ActorRef, currentRid: RoundIdentifier) = {
+    // deduce round identifier and use one higher
+  }
 
   def takeThroughWholeRound()(implicit p: ActorRef) = {
     val v = KeyValue("dummy", 1)
     sendKvsGet(v)
   }
-
-  def expectNoMessage() = ???
-  def expectToStartNewInstance() = ???
 
   def create(listener: Option[ActorRef] = None)(implicit system: ActorSystem) = {
     val learnerProbe = TestProbe()
@@ -40,10 +41,14 @@ class ProposerTestHelper(val nodeCount: NodeId) {
 }
 
 object CommTestHelper {
-  def expectRoundStarted(v: KeyValue, comm: TestProbe) = {
+    def expectInstanceStarted(v: KeyValue, comm: TestProbe, ridChecker: RoundIdentifier => Boolean = _ => true) = {
     comm.expectMsgPF() {
-      case SendMulticast(Prepare(_)) => true
+      case SendMulticast(Prepare(rid)) if ridChecker(rid) => true
     }
+  }
+
+  def expectNewInstanceStarted(v: KeyValue, comm: TestProbe)(implicit currentRid: RoundIdentifier) = {
+    expectInstanceStarted(v, comm, rid => rid.instanceId > currentRid.instanceId)
   }
 
   def expect2aWithValue(v: KeyValue, comm: TestProbe) = {
@@ -86,6 +91,8 @@ class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
   }
 
   "Proposer" - {
+    val ourValue = KeyValue("our", 1)
+    val differentValue = KeyValue("previous", 2)
 
     "queue new requests while conducting phase1" in {
       val key = "otherKey"
@@ -119,14 +126,13 @@ class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
     }
 
     "in phase 1" - {
-      val ourValue = KeyValue("our", 1)
-      implicit val mo = startMoForNode0
+      implicit val currentRid = startMoForNode0
 
       "should initiate it after receiving request" in {
         val (logger, comm, proposer) = helper.create()
 
         helper.sendKvsGet(ourValue)
-        CommTestHelper.expectRoundStarted(ourValue, comm)
+        CommTestHelper.expectInstanceStarted(ourValue, comm)
 
         // testLogger.expectMsg(RequestReceived(KeyValue(key, value)))
         // testLogger.expectMsg(ContextChange("phase1"))
@@ -134,28 +140,74 @@ class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       }
 
       "after receiving 1B" - {
-        val previousValue = KeyValue("previous", 2)
-        val testElements = List(helper.create(), helper.create())
+        val testElements = List.tabulate(3)(_ => helper.create())
         testElements.foreach {
           case (_, _, proposer) => helper.sendKvsGet(ourValue)
         }
 
-        "empty" - {
+        "empty with lower id" - {
+          val (logger, comm, proposer) = testElements(0)
+          helper.sendEmptyP1Bs()
+
           "should initiate 2A with requested value" in {
-            val (logger, comm, proposer) = testElements(0)
-            helper.sendEmptyP1Bs()
             CommTestHelper.expect2aWithValue(ourValue, comm)
           }
         }
 
-        "containing value" - {
+        "containing value with lower id" - {
+          val (logger, comm, proposer) = testElements(1)
+          helper.sendValuedP1Bs(differentValue)
+
           "should initiate 2A with value already voted on" in {
-            val (logger, comm, proposer) = testElements(1)
-            helper.sendValuedP1Bs(previousValue)
-            CommTestHelper.expect2aWithValue(previousValue, comm)
+            CommTestHelper.expect2aWithValue(differentValue, comm)
+          }
+        }
+
+        "with higher id" in {
+          val (logger, comm, proposer) = testElements(2)
+          helper.sendValuedP1BsWithHigherRoundId(differentValue)
+
+          "should abandon current instance and start new one with the same value" in {
+            CommTestHelper.expectNewInstanceStarted(ourValue, comm)
           }
         }
       }
+    }
+
+    "in phase 2" - {
+      implicit val currentRid = startMoForNode0
+
+      "when rejected in 2B" - {
+        val testElements = List.tabulate(3)(_ => helper.create())
+        testElements.foreach {
+          case (_, _, proposer) =>
+            helper.sendKvsGet(ourValue)
+            helper.sendEmptyP1Bs()
+            helper.sendP2bHigherProposalNack()
+        }
+
+        "but value gets chosen" - {
+          val (logger, comm, proposer) = testElements(0)
+          helper.sendValueChosen(ourValue)
+
+          "should report success" in {
+            logger.expectMsg(InstanceSuccessful(currentRid.instanceId))
+          }
+        }
+
+        "and value wasn't chosen" - {
+          val (logger, comm, proposer) = testElements(1)
+          helper.sendValueChosen(differentValue)
+
+          "should start new round for the same value" in {
+            logger.expectMsg(RestartingInstance(ourValue))
+          }
+        }
+      }
+    }
+
+    "should when timers expire" - {
+
     }
 
     "in case of message from different instance" - {
@@ -188,12 +240,12 @@ class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       * - takes proposer through full Paxos instance and monitors if reactions are correct
       *   - +1B contained different value - that value chosen, but then new Paxos instance initiated
       *   - +1B empty - progresses with his own value
+      *   - +higher id reported in 1B - abandon and start new instance
+      *   - +higher id response in 2B - wait patiently for voting results, then restart (should be-> immediatelly abandon instance,
+      *     try new one)
       *   - no response to 1A -> retransmissions
       *   - no reponse to election result -> 2A retransmission
       *   - no retransmission to those that responded
-      *   - higher id reported in 1B - abandon and start new instance
-      *   - higher id response in 2B - wait patiently for voting results (should be-> immediatelly abandon instance,
-      *     try new one)
       *   - handling of duplicate messages
       *     - multiple 1B and 2B from the same node should be ignored (but their values should be probably reported)
       *   - upon learning:
