@@ -67,6 +67,38 @@ class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       testLogger.expectMsg(PromiseDuplicate(promise))
     }
 
+    /**
+      * ToDo:
+      * - rejects messages from older instances, but notices higher one and updates counte accordingly
+      * - rejects messages from lower rounds than last initiated, but notices higher ones and adjusts his counter (even
+      *   if round in progress, it just should not affect current round)
+      * - for each case:
+      *    - immediatelly after creation
+      *    - after it becomes ready
+      *    - after it entered phase 1
+      *    - after it entered phase 2
+      *   KvsGet causes (at some point) new round to be initiated (possibly also check order)
+      * - takes proposer through full Paxos instance and monitors if reactions are correct
+      *   - 1B contained different value - that value chosen, but then new Paxos instance initiated
+      *   - 1B empty - progresses with his own value
+      *   - no response to 1A -> retransmissions
+      *   - no reponse to election result -> 2A retransmission
+      *   - no retransmission to those that responded
+      *   - higher id reported in 1B - abandon and start new instance
+      *   - higher id response in 2B - wait patiently for voting results (should be-> immediatelly abandon instance,
+      *     try new one)
+      *   - handling of duplicate messages
+      *     - multiple 1B and 2B from the same node should be ignored (but their values should be probably reported)
+      *   - upon learning:
+      *     - about success: new value taken
+      *     - about failure: retrying with higher instance id
+      *
+      * ToDo v2:
+      *  - helper (take actor to given state)
+      *  - move textual logging to listener actor
+      *
+      */
+
   }
 
 }
