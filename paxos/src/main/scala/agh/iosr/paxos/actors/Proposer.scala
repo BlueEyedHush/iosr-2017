@@ -19,12 +19,11 @@ Checklist:
 
 
 object Proposer {
-  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, logger: ActorRef = null): Props =
+  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, logger: Option[ActorRef] = None): Props =
     Props(new Proposer(learner, nodeId, nodeCount, logger))
 
   case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
 
-  // @todo put this shit in companion object
   sealed trait PaxosInstanceState {
     def mo: RoundIdentifier
   }
@@ -71,7 +70,8 @@ object Proposer {
   case class InstanceChoseWrongValue(instance: InstanceId, value: KeyValue) extends LogMessage
 }
 
-class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, val logger: ActorRef)
+// @todo logger - null to Option
+class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, val logger: Option[ActorRef])
   extends Actor with ActorLogging with Timers {
 
   import Proposer._
@@ -309,9 +309,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     timers.cancel(conf.key)
   }
 
-  def logg(msg: LogMessage): Unit = {
-    if (logger != null)
-      logger ! msg
-  }
+  def logg(msg: LogMessage): Unit = logger.foreach(_ ! msg)
 
 }

@@ -1,8 +1,8 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.actors.Proposer._
 import agh.iosr.paxos.actors.{Proposer, Ready, ReceivedMessage}
+import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.predef._
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
@@ -24,7 +24,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
   }
 
   override def beforeAll(): Unit = {
-    testProposer = system.actorOf(Proposer.props(testLearner.ref, pNodeId, nodeCount, testLogger.ref))
+    testProposer = system.actorOf(Proposer.props(testLearner.ref, pNodeId, nodeCount, Some(testLogger.ref)))
     testLearner.expectMsg(LearnerSubscribe())
     communicateProposer(Ready)
   }
