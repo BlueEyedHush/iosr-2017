@@ -4,7 +4,6 @@ import agh.iosr.paxos.actors._
 import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
-import agh.iosr.paxos.utils.IdGenerator
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{TestKit, TestProbe}
 import org.scalatest._
@@ -81,13 +80,13 @@ class ProposerTestHelper(val nodeCount: NodeId) {
 }
 
 object CommTestHelper {
-    def expectInstanceStarted(v: KeyValue, ridChecker: RoundIdentifier => Boolean = _ => true)(implicit comm: MockCommunicator) = {
+    def expectInstanceStarted(v: KeyValue, ridChecker: RoundIdentifier => Boolean = _ => true)(implicit comm: MockCommunicator): RoundIdentifier = {
     comm.v.expectMsgPF() {
-      case SendMulticast(Prepare(rid)) if ridChecker(rid) => true
+      case SendMulticast(Prepare(rid)) if ridChecker(rid) => rid
     }
   }
 
-  def expectNewInstanceStarted(v: KeyValue)(implicit currentRid: RoundIdentifier, comm: MockCommunicator) = {
+  def expectNewInstanceStarted(v: KeyValue)(implicit currentRid: RoundIdentifier, comm: MockCommunicator): RoundIdentifier = {
     expectInstanceStarted(v, rid => rid.instanceId > currentRid.instanceId)
   }
 
@@ -114,17 +113,14 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
   import ExecutionTracing._
 
   val helper = new ProposerTestHelper(NODE_COUNT)
-  val startInstanceId = 0
-  val startMoForNode0 = {
-    val rid = new IdGenerator(0).nextId()
-    RoundIdentifier(startInstanceId, rid)
-  }
 
   override def afterAll(): Unit = {
     TestKit.shutdownActorSystem(system)
   }
 
   "Proposer" - {
+    import shapeless.syntax.std.tuple._
+
     val ourValue = KeyValue("our", 1)
     val differentValue = KeyValue("previous", 2)
 
@@ -134,8 +130,6 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
     }
 
     "in phase 1" - {
-      implicit val currentRid = startMoForNode0
-
       "should initiate it after receiving request" in {
         implicit val (logger, comm, proposer) = helper.create("inst_start")
 
@@ -147,13 +141,13 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         def prepareActors(nameSuffix: String) = {
           implicit val r @ (logger, comm, proposer) = helper.create(s"after_1b_recv_$nameSuffix")
           helper.sendKvsGet(ourValue)
-          CommTestHelper.expectInstanceStarted(ourValue)
-          r
+          val rid = CommTestHelper.expectInstanceStarted(ourValue)
+          r :+ rid
         }
 
         "empty with lower id" - {
           "should initiate 2A with requested value" in {
-            implicit val (logger, comm, proposer) = prepareActors("empty")
+            implicit val (logger, comm, proposer, rid) = prepareActors("empty")
             helper.sendEmptyP1Bs()
             CommTestHelper.expect2aWithValue(ourValue)
           }
@@ -161,7 +155,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
         "containing value with lower id" - {
           "should initiate 2A with value already voted on" in {
-            implicit val (logger, comm, proposer) = prepareActors("lower_id")
+            implicit val (logger, comm, proposer, rid) = prepareActors("lower_id")
             helper.sendValuedP1Bs(differentValue)
             CommTestHelper.expect2aWithValue(differentValue)
           }
@@ -169,7 +163,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
         "with higher id" in {
           "should abandon current instance and start new one with the same value" in {
-            implicit val (logger, comm, proposer) = prepareActors("higher_id")
+            implicit val (logger, comm, proposer, rid) = prepareActors("higher_id")
             helper.sendValuedP1BsWithHigherRoundId(differentValue)
             CommTestHelper.expectNewInstanceStarted(ourValue)
           }
@@ -178,28 +172,28 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
     }
 
     "in phase 2" - {
-      implicit val currentRid = startMoForNode0
-
       "when rejected in 2B" - {
         def prepareActor(nameSuffix: String) = {
           implicit val r @ (logger, comm, proposer) = helper.create(s"2b_reject_$nameSuffix")
           helper.sendKvsGet(ourValue)
+          implicit val rid = CommTestHelper.expectInstanceStarted(ourValue)
           helper.sendEmptyP1Bs()
+          CommTestHelper.expect2a()
           helper.sendP2bHigherProposalNack()
-          r
+          r :+ rid
         }
 
         "but value gets chosen" - {
           "should report success" in {
-            implicit val (logger, comm, proposer) = prepareActor("value_chosen")
+            implicit val (logger, comm, proposer, rid) = prepareActor("value_chosen")
             helper.sendValueChosen(ourValue)
-            logger.v.expectMsg(InstanceSuccessful(currentRid.instanceId))
+            logger.v.expectMsg(InstanceSuccessful(rid.instanceId))
           }
         }
 
         "and value wasn't chosen" - {
           "should start new round for the same value" in {
-            implicit val (logger, comm, proposer) = prepareActor("value_not_chosen")
+            implicit val (logger, comm, proposer, rid) = prepareActor("value_not_chosen")
             helper.sendValueChosen(differentValue)
             logger.v.expectMsg(RequestProcessingStarted(ourValue))
           }
@@ -210,7 +204,6 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
     "should when timers expire" - {
       import scala.concurrent.duration._
 
-      implicit val currentRid = startMoForNode0
       val rt = RETRANSMISSION_TIMEOUT
       val sent = List(1,2)
       val didntSent = List(3)
@@ -218,24 +211,24 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       def prepareActor(nameSuffix: String) = {
         implicit val r @ (logger, comm, proposer) = helper.create(s"timeout", false)
         helper.sendKvsGet(ourValue)
-        CommTestHelper.expectInstanceStarted(ourValue)
-        r
+        implicit val rid = CommTestHelper.expectInstanceStarted(ourValue)
+        r :+ rid
       }
 
       "while waiting for 1Bs" - {
         "retransmit to those that didn't respond (and only those)" in {
-          implicit val (logger, comm, proposer) = prepareActor("1b_retransmit")
+          implicit val (logger, comm, proposer, rid) = prepareActor("1b_retransmit")
           helper.sendP1BsFrom(sent, None)
 
           within (0.75*rt millis, 1.25*rt millis) {
-            comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(Prepare(currentRid), nid)))
+            comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(Prepare(rid), nid)))
           }
         }
       }
 
       "while waiting for vote result" - {
         def prepareActor1(name: String) = {
-          implicit val r @ (logger, comm, proposer) = prepareActor(name)
+          implicit val r @ (logger, comm, proposer, rid) = prepareActor(name)
           helper.sendEmptyP1Bs()
           CommTestHelper.expect2a()
           helper.sendP2bHigherProposalNack(sent)
@@ -243,15 +236,15 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         }
 
         "retransmit to those that didn't respond" in {
-          implicit val (_, comm, proposer) = prepareActor1("2b_timeout")
+          implicit val (_, comm, proposer, rid) = prepareActor1("2b_timeout")
 
           within (0.75*rt millis, 1.25*rt millis) {
-            comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(AcceptRequest(currentRid, ourValue), nid)))
+            comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(AcceptRequest(rid, ourValue), nid)))
           }
         }
 
         "abandon ??? if sufficiently long time elapses" in {
-          implicit val (logger, _, proposer) = prepareActor1("instance_timeout")
+          implicit val (logger, _, proposer, rid) = prepareActor1("instance_timeout")
 
           within(0.75*INSTANCE_TIMEOUT millis, 1.25*INSTANCE_TIMEOUT millis) {
             logger.v.receiveWhile() {
@@ -280,6 +273,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       * - look through logger if it responds consistently
       * - helper methods can have optional "senders" param, which defaults to all neighbours
       * - fix names so that they reflect we are mocking sending (expecially in helper)
+      * - extract common stuff from fixtures
       *
       * ToDo:
       * - rejects messages from older instances, but notices higher ones and updates counte accordingly
