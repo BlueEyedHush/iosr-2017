@@ -62,7 +62,7 @@ class ProposerTestHelper(val nodeCount: NodeId) {
 
 
   var actorId: Int = 0
-  def create(name: String = "")(implicit system: ActorSystem) = {
+  def create(name: String = "", disableTimeouts: Boolean = true)(implicit system: ActorSystem) = {
     val actorName = if (!name.isEmpty) name else {
       val numName = actorId.toString
       actorId += 1
@@ -73,7 +73,7 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     val commProbe = TestProbe()
     val listener = TestProbe()
     val printer = system.actorOf(Printer.props(), s"${actorName}_p")
-    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref, printer)), actorName)
+    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref, printer), disableTimeouts), actorName)
     commProbe.send(proposer, Ready)
     learnerProbe.expectMsg(LearnerSubscribe())
     (MockLogger(listener), MockCommunicator(commProbe), proposer)
@@ -147,6 +147,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         def prepareActors(nameSuffix: String) = {
           implicit val r @ (logger, comm, proposer) = helper.create(s"after_1b_recv_$nameSuffix")
           helper.sendKvsGet(ourValue)
+          CommTestHelper.expectInstanceStarted(ourValue)
           r
         }
 
@@ -215,7 +216,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       val didntSent = List(3)
 
       def prepareActor(nameSuffix: String) = {
-        implicit val r @ (logger, comm, proposer) = helper.create(s"timeout")
+        implicit val r @ (logger, comm, proposer) = helper.create(s"timeout", false)
         helper.sendKvsGet(ourValue)
         CommTestHelper.expectInstanceStarted(ourValue)
         r

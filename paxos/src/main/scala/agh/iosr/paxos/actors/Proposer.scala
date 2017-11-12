@@ -20,8 +20,8 @@ Checklist:
 
 
 object Proposer {
-  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, loggers: Set[ActorRef] = Set()): Props =
-    Props(new Proposer(learner, nodeId, nodeCount, loggers))
+  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, loggers: Set[ActorRef] = Set(), disableTimeouts: Boolean = false): Props =
+    Props(new Proposer(learner, nodeId, nodeCount, loggers, disableTimeouts))
 
   case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
 
@@ -92,7 +92,7 @@ class Printer extends Actor with ActorLogging {
 }
 
 
-class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, val loggers: Set[ActorRef])
+class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, val loggers: Set[ActorRef], val disableTimeouts: Boolean)
   extends Actor with ActorLogging with Timers {
 
   import ExecutionTracing._
@@ -327,13 +327,13 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     largest.headOption
   }
 
-  def startTimer(conf: TimerConf) = {
-    timers.startPeriodicTimer(conf.key, conf.msg, FiniteDuration(conf.msInterval, TimeUnit.MILLISECONDS))
-  }
+  def startTimer(conf: TimerConf) =
+    if (!disableTimeouts)
+      timers.startPeriodicTimer(conf.key, conf.msg, FiniteDuration(conf.msInterval, TimeUnit.MILLISECONDS))
 
-  def stopTimer(conf: TimerConf) = {
-    timers.cancel(conf.key)
-  }
+  def stopTimer(conf: TimerConf) =
+    if (!disableTimeouts)
+      timers.cancel(conf.key)
 
   def logg(msg: LogMessage): Unit = loggers.foreach(_ ! msg)
 
