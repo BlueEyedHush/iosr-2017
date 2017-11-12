@@ -61,12 +61,14 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     sendFromOthers(HigherProposalReceived(currentRid, currentRid.roundId + 1), fromWhom)
 
 
-  def create(listener: Option[ActorRef] = None)(implicit system: ActorSystem) = {
+  def create()(implicit system: ActorSystem) = {
     val learnerProbe = TestProbe()
     val commProbe = TestProbe()
-    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, listener))
+    val listener = TestProbe()
+    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Some(listener.ref)))
     commProbe.send(proposer, Ready)
-    (MockLogger(learnerProbe), MockCommunicator(commProbe), proposer)
+    learnerProbe.expectMsg(LearnerSubscribe())
+    (MockLogger(listener), MockCommunicator(commProbe), proposer)
   }
 }
 
@@ -132,12 +134,6 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
   "Proposer" - {
     val ourValue = KeyValue("our", 1)
     val differentValue = KeyValue("previous", 2)
-
-
-    "should subscribe to learner" in {
-      implicit val (probe, _, proposer) = helper.create()
-      probe.v.expectMsg(LearnerSubscribe())
-    }
 
     "should correctly register communicator" in {
       implicit val (probe, comm, proposer) = helper.create()
