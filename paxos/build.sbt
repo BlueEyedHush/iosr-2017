@@ -1,6 +1,7 @@
 
 val akkaVersion = "2.5.6"
 val logbackVersion = "1.2.3"
+val shapelessVersion = "2.3.2"
 
 lazy val root = (project in file(".")).
   settings(
@@ -16,7 +17,8 @@ lazy val root = (project in file(".")).
     libraryDependencies += "com.typesafe.akka" %% "akka-actor" % akkaVersion,
     libraryDependencies += "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
     libraryDependencies += "ch.qos.logback" % "logback-classic" % logbackVersion,
+    libraryDependencies += "com.chuusai" %% "shapeless" % shapelessVersion,
 
-    libraryDependencies += "com.typesafe.akka" %% "akka-testkit"  % akkaVersion % Test,
+      libraryDependencies += "com.typesafe.akka" %% "akka-testkit"  % akkaVersion % Test,
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.3" % Test,
   )

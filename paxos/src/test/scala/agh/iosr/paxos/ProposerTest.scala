@@ -1,71 +1,320 @@
 package agh.iosr.paxos
 
+import agh.iosr.paxos.actors.ExecutionTracing.LogMessage
+import agh.iosr.paxos.actors._
 import agh.iosr.paxos.messages.Messages._
-import agh.iosr.paxos.actors.Proposer._
-import agh.iosr.paxos.actors.{Proposer, Ready, ReceivedMessage}
+import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
 import akka.actor.{ActorRef, ActorSystem}
-import akka.testkit.{ImplicitSender, TestKit, TestProbe}
-import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll, Matchers, WordSpecLike}
+import akka.testkit.{TestKit, TestProbe}
+import org.scalatest._
+import org.slf4j.LoggerFactory
 
+case class MockCommunicator(val v: TestProbe) extends AnyVal
+case class MockLogger(val v: TestProbe) extends AnyVal
 
-class ProposerTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
-  with WordSpecLike with Matchers with BeforeAndAfterAll with BeforeAndAfter {
+/**
+  * proposer should think it's running on node 0
+  */
+class ProposerTestHelper(val nodeCount: NodeId) {
+  /* small misrepresenation, made for convenience - messages should be sent by Communicator (TestProbe we
+   * use in its place, but we  */
 
-  val pNodeId: NodeId = 2
-  val nodeCount: NodeId = 4
-  var testProposer: ActorRef = _
-  val testLearner: TestProbe = TestProbe()
-  val testLogger: TestProbe = TestProbe()
-  val testCommunicator: TestProbe = TestProbe()
+  val PROPOSER_NODE_ID: NodeId = 0
+  private val SMALLEST_ROUND_ID: RoundId = -1 // unconditionally msmaller than anything IdGenerator'll generate
+  private val others = (1 until nodeCount).toSeq
+  private val DESIGNATED_OTHER: NodeId = others.last 
 
-  def communicateProposer(msg: Any): Unit = {
-    testCommunicator.send(testProposer, msg)
+  private def sendOne(msg: SendableMessage)(implicit p: ActorRef, c: MockCommunicator) =
+    c.v.send(p, ReceivedMessage(msg, DESIGNATED_OTHER))
+
+  private def sendFromOthers(msg: SendableMessage, oList: Seq[NodeId] = others)(implicit p: ActorRef, c: MockCommunicator) =
+    oList.foreach(id => c.v.send(p, ReceivedMessage(msg, id)))
+
+  def sendKvsGet(v: KeyValue)(implicit p: ActorRef, c: MockCommunicator) =
+    c.v.send(p, KvsSend(v.k, v.v))
+
+  def sendEmptyP1Bs()(implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) =
+    sendFromOthers(Promise(currentRid, SMALLEST_ROUND_ID, None))
+
+  def sendValuedP1Bs(pval: KeyValue)(implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) =
+    sendFromOthers(Promise(currentRid, SMALLEST_ROUND_ID, Some(pval)))
+
+  def sendP1bRoundTooOld(pval: KeyValue)
+                        (implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) = {
+    sendFromOthers(RoundTooOld(currentRid, currentRid.roundId + 1))
   }
 
-  override def beforeAll(): Unit = {
-    testProposer = system.actorOf(Proposer.props(testLearner.ref, pNodeId, nodeCount, testLogger.ref))
-    testLearner.expectMsg(LearnerSubscribe())
-    communicateProposer(Ready)
+  def sendP1BsFrom(nodes: List[NodeId], v: Option[KeyValue])(implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) =
+    sendFromOthers(Promise(currentRid, SMALLEST_ROUND_ID, v), nodes)
+
+
+  def sendValueChosen(v: KeyValue)(implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) =
+    c.v.send(p, ValueLearned(currentRid.instanceId, v.k, v.v))
+
+  def sendP2bHigherProposalNack(optionId: Option[RoundId] = None)(implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) = {
+    val rid = optionId.getOrElse(currentRid.roundId + 1)
+    sendOne(HigherProposalReceived(currentRid, rid))
   }
+
+  def sendP2bHigherProposalNack(fromWhom: List[NodeId])(implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) =
+    sendFromOthers(HigherProposalReceived(currentRid, currentRid.roundId + 1), fromWhom)
+
+
+  var actorId: Int = 0
+  def create(name: String = "", disableTimeouts: Boolean = true)(implicit system: ActorSystem) = {
+    val actorName = if (!name.isEmpty) name else {
+      val numName = actorId.toString
+      actorId += 1
+      numName
+    }
+
+    val learnerProbe = TestProbe()
+    val commProbe = TestProbe()
+    val listener = TestProbe()
+    val printer = system.actorOf(Printer.props(), s"${actorName}_p")
+    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref, printer), disableTimeouts), actorName)
+    commProbe.send(proposer, Ready)
+    learnerProbe.expectMsg(LearnerSubscribe())
+    (MockLogger(listener), MockCommunicator(commProbe), proposer)
+  }
+}
+
+object CommTestHelper {
+    def expectInstanceStarted(v: KeyValue, ridChecker: RoundIdentifier => Boolean = _ => true)(implicit comm: MockCommunicator): RoundIdentifier = {
+    comm.v.expectMsgPF() {
+      case SendMulticast(Prepare(rid)) if ridChecker(rid) => rid
+    }
+  }
+
+  def expectNewInstanceStarted(v: KeyValue)(implicit currentRid: RoundIdentifier, comm: MockCommunicator): RoundIdentifier = {
+    expectInstanceStarted(v, rid => rid.instanceId > currentRid.instanceId)
+  }
+
+  def expect2aWithValue(v: KeyValue)(implicit comm: MockCommunicator) = {
+    comm.v.expectMsgPF() {
+      case SendMulticast(AcceptRequest(_, value)) if v == value => true
+    }
+  }
+
+  def expect2a()(implicit comm: MockCommunicator) = {
+    comm.v.expectMsgPF() {
+      case SendMulticast(AcceptRequest(_, _)) => true
+    }
+  }
+
+  def fishForLoggerMsg(m: LogMessage)(implicit logger: MockLogger) = {
+    logger.v.receiveWhile() {
+      case message if message == m => true
+    }
+  }
+}
+
+class ProposerTest extends TestKit(ActorSystem("MySpec"))
+  with FreeSpecLike with Matchers with BeforeAndAfterAll with BeforeAndAfter {
+
+  val RETRANSMISSION_TIMEOUT = 200 // in ms
+  val INSTANCE_TIMEOUT = 2000 // in ms
+  val NODE_COUNT = 4
+
+  import ExecutionTracing._
+
+  val log = LoggerFactory.getLogger(classOf[ProposerTest])
+  val helper = new ProposerTestHelper(NODE_COUNT)
 
   override def afterAll(): Unit = {
     TestKit.shutdownActorSystem(system)
   }
 
+  "Proposer" - {
+    import shapeless.syntax.std.tuple._
 
-  "Proposer" must {
+    val ourValue = KeyValue("our", 1)
+    val differentValue = KeyValue("previous", 2)
 
-    "initiate phase1 upon revceiving request" in {
-      val key = "testKey"
-      val value = 14
-      val request = KvsSend(key, value)
-      testProposer ! request
-      testLogger.expectMsg(RequestReceived(KeyValue(key, value)))
-      testLogger.expectMsg(ContextChange("phase1"))
-      testLogger.expectMsgClass(classOf[PrepareSent])
+    "should correctly register communicator" in {
+      implicit val (probe, comm, proposer) = helper.create("comm_test")
+      probe.v.expectMsg(CommInitialized(comm.v.ref))
     }
 
-    "queue new requests while conducting phase1" in {
-      val key = "otherKey"
-      val value = 4
-      val request = KvsSend(key, value)
-      testProposer ! request
-      testLogger.expectMsg(RequestQueued(KeyValue(key, value)))
+    "in phase 1" - {
+      "should initiate it after receiving request" in {
+        implicit val (logger, comm, proposer) = helper.create("inst_start")
+
+        helper.sendKvsGet(ourValue)
+        CommTestHelper.expectInstanceStarted(ourValue)
+      }
+
+      "after receiving 1B" - {
+        def prepareActors(nameSuffix: String) = {
+          implicit val r @ (logger, comm, proposer) = helper.create(s"after_1b_recv_$nameSuffix")
+          helper.sendKvsGet(ourValue)
+          val rid = CommTestHelper.expectInstanceStarted(ourValue)
+          r :+ rid
+        }
+
+        "empty with lower id" - {
+          "should initiate 2A with requested value" in {
+            implicit val (logger, comm, proposer, rid) = prepareActors("empty")
+            helper.sendEmptyP1Bs()
+            CommTestHelper.expect2aWithValue(ourValue)
+          }
+        }
+
+        "containing value with lower id" - {
+          "should initiate 2A with value already voted on" in {
+            implicit val (logger, comm, proposer, rid) = prepareActors("lower_id")
+            helper.sendValuedP1Bs(differentValue)
+            CommTestHelper.expect2aWithValue(differentValue)
+          }
+        }
+
+        "with higher id" - {
+          "should abandon current instance and start new one with the same value" in {
+            implicit val (logger, comm, proposer, rid) = prepareActors("higher_id")
+            helper.sendP1bRoundTooOld(differentValue)
+            CommTestHelper.expectNewInstanceStarted(ourValue)
+          }
+        }
+      }
     }
 
-    "recognise Promise duplicates" in {
-      val remoteId = 1
-      val instanceId = 1
-      val roundId = pNodeId
-      val lastVotedRound = 0
-      val lastVotedValue = None
-      val promise = Promise(RoundIdentifier(instanceId, roundId), lastVotedRound, lastVotedValue)
-      communicateProposer(ReceivedMessage(promise, remoteId))
-      communicateProposer(ReceivedMessage(promise, remoteId))
+    "in phase 2" - {
+      "when rejected in 2B" - {
+        def prepareActor(nameSuffix: String) = {
+          implicit val r @ (logger, comm, proposer) = helper.create(s"2b_reject_$nameSuffix")
+          helper.sendKvsGet(ourValue)
+          implicit val rid = CommTestHelper.expectInstanceStarted(ourValue)
+          helper.sendEmptyP1Bs()
+          CommTestHelper.expect2a()
+          helper.sendP2bHigherProposalNack()
+          r :+ rid
+        }
 
-      testLogger.expectMsg(PromiseDuplicate(promise))
+        "but value gets chosen" - {
+          "should report success" in {
+            implicit val (logger: MockLogger, comm, proposer, rid) = prepareActor("value_chosen")
+            helper.sendValueChosen(ourValue)
+            CommTestHelper.fishForLoggerMsg(InstanceSuccessful(rid.instanceId))
+          }
+        }
+
+        "and value wasn't chosen" - {
+          "should start new round for the same value" in {
+            implicit val (logger, comm, proposer, rid) = prepareActor("value_not_chosen")
+            helper.sendValueChosen(differentValue)
+            CommTestHelper.fishForLoggerMsg(RequestProcessingStarted(ourValue))
+          }
+        }
+      }
     }
+
+    "should when timers expire" - {
+      import scala.concurrent.duration._
+
+      val rt = RETRANSMISSION_TIMEOUT
+      val sent = List(1,2)
+      val didntSent = List(3)
+
+      def prepareActor(nameSuffix: String) = {
+        implicit val r @ (logger, comm, proposer) = helper.create(s"timeout_$nameSuffix", false)
+        helper.sendKvsGet(ourValue)
+        implicit val rid = CommTestHelper.expectInstanceStarted(ourValue)
+        r :+ rid
+      }
+
+      "while waiting for 1Bs" - {
+        "retransmit to those that didn't respond (and only those)" in {
+          implicit val (logger, comm, proposer, rid) = prepareActor("1b")
+          helper.sendP1BsFrom(sent, None)
+
+          within (0.75*rt millis, 1.25*rt millis) {
+            comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(Prepare(rid), nid)) :_*)
+          }
+        }
+      }
+
+      "while waiting for vote result" - {
+        def prepareActor1(name: String) = {
+          implicit val r @ (logger, comm, proposer, rid) = prepareActor(name)
+          helper.sendEmptyP1Bs()
+          CommTestHelper.expect2a()
+          helper.sendP2bHigherProposalNack(sent)
+          r
+        }
+
+        "retransmit to those that didn't respond" in {
+          implicit val (_, comm, proposer, rid) = prepareActor1("2b")
+
+          within (0.75*rt millis, 1.25*rt millis) {
+            comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(AcceptRequest(rid, ourValue), nid)) :_*)
+          }
+        }
+
+        "abandon value if sufficiently long time elapses" in {
+          implicit val (logger, _, proposer, rid) = prepareActor1("instance")
+
+          within(0.75*INSTANCE_TIMEOUT millis, 1.25*INSTANCE_TIMEOUT millis) {
+            logger.v.fishForMessage() {
+              case TimeoutHit(TimeoutType.instance, _) => true
+              case _ => false
+            }
+          }
+        }
+      }
+    }
+
+    "in case of message from different instance" - {
+      // take him through a couple of rounds, only then check impact (use AutoPilot)
+      "(lower one) should simply ignore it" in {
+      }
+
+      "(higher one) should take notice and use this information when starting new instance" in {
+
+      }
+    }
+
+    /**
+      * ToDo v2:
+      * - take fully through the round
+      * - helper (take actor to given state)
+      * - move textual logging to listener actor
+      * - look through logger if it responds consistently
+      * - helper methods can have optional "senders" param, which defaults to all neighbours
+      * - fix names so that they reflect we are mocking sending (expecially in helper)
+      * - extract common stuff from fixtures
+      * - merge helpers
+      *
+      * ToDo:
+      * - rejects messages from older instances, but notices higher ones and updates counte accordingly
+      * - +learns about communicator
+      * - +subscribes to learner
+      * - all messages within round have correct MOs
+      * - for each case:
+      *    - immediatelly after creation
+      *    - after it becomes ready
+      *    - after it entered phase 1
+      *    - after it entered phase 2
+      *   KvsGet causes (at some point) new round to be initiated (possibly also check order)
+      * - takes proposer through full Paxos instance and monitors if reactions are correct
+      *   - +1B contained different value - that value chosen, but then new Paxos instance initiated
+      *   - +1B empty - progresses with his own value
+      *   - !(where???) higher id reported in 1B - abandon and start new instance
+      *   - +higher id response in 2B - wait patiently for voting results, then restart (should be-> immediatelly abandon instance,
+      *     try new one)
+      *   - +no response to 1A -> retransmissions
+      *   - +no reponse to election result -> 2A retransmission
+      *   - +no retransmission to those that responded
+      *   - +instance timeout
+      *   - handling of duplicate messages
+      *     - multiple 1B and 2B from the same node should be ignored (but their values should be probably reported)
+      *   - upon learning:
+      *     - about success: new value taken
+      *     - about failure: retrying with higher instance id
+    *     - comprehensive, expectMessagesAllOf test
+      *
+      *
+      */
 
   }
 
