@@ -1,5 +1,6 @@
 package agh.iosr.paxos
 
+import agh.iosr.paxos.actors.ExecutionTracing.LogMessage
 import agh.iosr.paxos.actors._
 import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.messages.SendableMessage
@@ -38,10 +39,9 @@ class ProposerTestHelper(val nodeCount: NodeId) {
   def sendValuedP1Bs(pval: KeyValue)(implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) =
     sendFromOthers(Promise(currentRid, SMALLEST_ROUND_ID, Some(pval)))
 
-  def sendValuedP1BsWithHigherRoundId(pval: KeyValue)
-                                     (implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) = {
-    val rid = currentRid.copy(roundId = currentRid.roundId + 1)
-    sendFromOthers(Promise(rid, SMALLEST_ROUND_ID, Some(pval)))
+  def sendP1bRoundTooOld(pval: KeyValue)
+                        (implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) = {
+    sendFromOthers(RoundTooOld(currentRid, currentRid.roundId + 1))
   }
 
   def sendP1BsFrom(nodes: List[NodeId], v: Option[KeyValue])(implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) =
@@ -99,6 +99,12 @@ object CommTestHelper {
   def expect2a()(implicit comm: MockCommunicator) = {
     comm.v.expectMsgPF() {
       case SendMulticast(AcceptRequest(_, _)) => true
+    }
+  }
+
+  def fishForLoggerMsg(m: LogMessage)(implicit logger: MockLogger) = {
+    logger.v.receiveWhile() {
+      case message if message == m => true
     }
   }
 }
@@ -161,10 +167,10 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
           }
         }
 
-        "with higher id" in {
+        "with higher id" - {
           "should abandon current instance and start new one with the same value" in {
             implicit val (logger, comm, proposer, rid) = prepareActors("higher_id")
-            helper.sendValuedP1BsWithHigherRoundId(differentValue)
+            helper.sendP1bRoundTooOld(differentValue)
             CommTestHelper.expectNewInstanceStarted(ourValue)
           }
         }
@@ -185,9 +191,9 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
         "but value gets chosen" - {
           "should report success" in {
-            implicit val (logger, comm, proposer, rid) = prepareActor("value_chosen")
+            implicit val (logger: MockLogger, comm, proposer, rid) = prepareActor("value_chosen")
             helper.sendValueChosen(ourValue)
-            logger.v.expectMsg(InstanceSuccessful(rid.instanceId))
+            CommTestHelper.fishForLoggerMsg(InstanceSuccessful(rid.instanceId))
           }
         }
 
@@ -195,7 +201,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
           "should start new round for the same value" in {
             implicit val (logger, comm, proposer, rid) = prepareActor("value_not_chosen")
             helper.sendValueChosen(differentValue)
-            logger.v.expectMsg(RequestProcessingStarted(ourValue))
+            CommTestHelper.fishForLoggerMsg(RequestProcessingStarted(ourValue))
           }
         }
       }
@@ -274,6 +280,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       * - helper methods can have optional "senders" param, which defaults to all neighbours
       * - fix names so that they reflect we are mocking sending (expecially in helper)
       * - extract common stuff from fixtures
+      * - merge helpers
       *
       * ToDo:
       * - rejects messages from older instances, but notices higher ones and updates counte accordingly

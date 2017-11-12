@@ -173,7 +173,11 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
             stopTimer(p1Conf)
             rqQueue.addFirst(st.ourValue)
             logg(RoundOverridden(currentMo, mostRecent, "1b"))
-            self ! Start
+
+            // to avoid unhandled messages while state is None we go back to idle first
+            logg(ContextChange("idle"))
+            context.become(idle)
+            self ! KvsSend(st.ourValue.k, st.ourValue.v)
 
           case pm @ Promise(_, vr, ovv) =>
             if (st.promises.contains(sid)) {
@@ -257,6 +261,8 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
 
           paxosState = None
           rqQueue.addFirst(st.ourValue)
+
+          // @todo this looks fishy, probably'll result in some pattern matching errors in ReceiveMessage
           context.become(phase1)
           logg(ContextChange("phase1"))
           self ! Start
