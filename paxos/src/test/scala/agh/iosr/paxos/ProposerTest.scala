@@ -61,12 +61,19 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     sendFromOthers(HigherProposalReceived(currentRid, currentRid.roundId + 1), fromWhom)
 
 
-  def create()(implicit system: ActorSystem) = {
+  var actorId: Int = 0
+  def create(name: String = "")(implicit system: ActorSystem) = {
+    val actorName = if (!name.isEmpty) name else {
+      val numName = actorId.toString
+      actorId += 1
+      numName
+    }
+
     val learnerProbe = TestProbe()
     val commProbe = TestProbe()
     val listener = TestProbe()
-    val printer = system.actorOf(Printer.props())
-    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref, printer)))
+    val printer = system.actorOf(Printer.props(), s"${actorName}_p")
+    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref, printer)), actorName)
     commProbe.send(proposer, Ready)
     learnerProbe.expectMsg(LearnerSubscribe())
     (MockLogger(listener), MockCommunicator(commProbe), proposer)
@@ -122,7 +129,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
     val differentValue = KeyValue("previous", 2)
 
     "should correctly register communicator" in {
-      implicit val (probe, comm, proposer) = helper.create()
+      implicit val (probe, comm, proposer) = helper.create("comm_test")
       probe.v.expectMsg(CommInitialized(comm.v.ref))
     }
 
@@ -130,43 +137,39 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       implicit val currentRid = startMoForNode0
 
       "should initiate it after receiving request" in {
-        implicit val (logger, comm, proposer) = helper.create()
+        implicit val (logger, comm, proposer) = helper.create("inst_start")
 
         helper.sendKvsGet(ourValue)
         CommTestHelper.expectInstanceStarted(ourValue)
       }
 
       "after receiving 1B" - {
-        val testElements = List.tabulate(3)(_ => helper.create())
-        testElements.foreach {
-          case a @ (_, _, proposer) =>
-            implicit val (_, c, p) = a // purely to mark them as implicit candidates
-            helper.sendKvsGet(ourValue)
+        def prepareActors(nameSuffix: String) = {
+          implicit val r @ (logger, comm, proposer) = helper.create(s"after_1b_recv_$nameSuffix")
+          helper.sendKvsGet(ourValue)
+          r
         }
 
         "empty with lower id" - {
-          implicit val (logger, comm, proposer) = testElements(0)
-          helper.sendEmptyP1Bs()
-
           "should initiate 2A with requested value" in {
+            implicit val (logger, comm, proposer) = prepareActors("empty")
+            helper.sendEmptyP1Bs()
             CommTestHelper.expect2aWithValue(ourValue)
           }
         }
 
         "containing value with lower id" - {
-          implicit val (logger, comm, proposer) = testElements(1)
-          helper.sendValuedP1Bs(differentValue)
-
           "should initiate 2A with value already voted on" in {
+            implicit val (logger, comm, proposer) = prepareActors("lower_id")
+            helper.sendValuedP1Bs(differentValue)
             CommTestHelper.expect2aWithValue(differentValue)
           }
         }
 
         "with higher id" in {
-          implicit val (logger, comm, proposer) = testElements(2)
-          helper.sendValuedP1BsWithHigherRoundId(differentValue)
-
           "should abandon current instance and start new one with the same value" in {
+            implicit val (logger, comm, proposer) = prepareActors("higher_id")
+            helper.sendValuedP1BsWithHigherRoundId(differentValue)
             CommTestHelper.expectNewInstanceStarted(ourValue)
           }
         }
@@ -177,29 +180,26 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       implicit val currentRid = startMoForNode0
 
       "when rejected in 2B" - {
-        val testElements = List.tabulate(3)(_ => helper.create())
-        testElements.foreach {
-          case a @ (_, _, proposer) =>
-            implicit val (_, c, p) = a // purely to mark them as implicit candidates
-            helper.sendKvsGet(ourValue)
-            helper.sendEmptyP1Bs()
-            helper.sendP2bHigherProposalNack()
+        def prepareActor(nameSuffix: String) = {
+          implicit val r @ (logger, comm, proposer) = helper.create(s"2b_reject_$nameSuffix")
+          helper.sendKvsGet(ourValue)
+          helper.sendEmptyP1Bs()
+          helper.sendP2bHigherProposalNack()
+          r
         }
 
         "but value gets chosen" - {
-          implicit val (logger, comm, proposer) = testElements(0)
-          helper.sendValueChosen(ourValue)
-
           "should report success" in {
+            implicit val (logger, comm, proposer) = prepareActor("value_chosen")
+            helper.sendValueChosen(ourValue)
             logger.v.expectMsg(InstanceSuccessful(currentRid.instanceId))
           }
         }
 
         "and value wasn't chosen" - {
-          implicit val (logger, comm, proposer) = testElements(1)
-          helper.sendValueChosen(differentValue)
-
           "should start new round for the same value" in {
+            implicit val (logger, comm, proposer) = prepareActor("value_not_chosen")
+            helper.sendValueChosen(differentValue)
             logger.v.expectMsg(RequestProcessingStarted(ourValue))
           }
         }
@@ -214,13 +214,18 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       val sent = List(1,2)
       val didntSent = List(3)
 
-      "while waiting for 1Bs" - {
-        implicit val (logger, comm, proposer) = helper.create()
+      def prepareActor(nameSuffix: String) = {
+        implicit val r @ (logger, comm, proposer) = helper.create(s"timeout")
         helper.sendKvsGet(ourValue)
         CommTestHelper.expectInstanceStarted(ourValue)
-        helper.sendP1BsFrom(sent, None)
+        r
+      }
 
+      "while waiting for 1Bs" - {
         "retransmit to those that didn't respond (and only those)" in {
+          implicit val (logger, comm, proposer) = prepareActor("1b_retransmit")
+          helper.sendP1BsFrom(sent, None)
+
           within (0.75*rt millis, 1.25*rt millis) {
             comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(Prepare(currentRid), nid)))
           }
@@ -228,10 +233,8 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       }
 
       "while waiting for vote result" - {
-        def prepareActor() = {
-          implicit val r @ (logger, comm, proposer) = helper.create()
-          helper.sendKvsGet(ourValue)
-          CommTestHelper.expectInstanceStarted(ourValue)
+        def prepareActor1(name: String) = {
+          implicit val r @ (logger, comm, proposer) = prepareActor(name)
           helper.sendEmptyP1Bs()
           CommTestHelper.expect2a()
           helper.sendP2bHigherProposalNack(sent)
@@ -239,7 +242,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         }
 
         "retransmit to those that didn't respond" in {
-          implicit val (_, comm, proposer) = prepareActor()
+          implicit val (_, comm, proposer) = prepareActor1("2b_timeout")
 
           within (0.75*rt millis, 1.25*rt millis) {
             comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(AcceptRequest(currentRid, ourValue), nid)))
@@ -247,7 +250,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         }
 
         "abandon ??? if sufficiently long time elapses" in {
-          implicit val (logger, _, proposer) = prepareActor()
+          implicit val (logger, _, proposer) = prepareActor1("instance_timeout")
 
           within(0.75*INSTANCE_TIMEOUT millis, 1.25*INSTANCE_TIMEOUT millis) {
             logger.v.receiveWhile() {
