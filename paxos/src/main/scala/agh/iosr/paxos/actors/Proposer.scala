@@ -19,8 +19,8 @@ Checklist:
 
 
 object Proposer {
-  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, logger: Option[ActorRef] = None): Props =
-    Props(new Proposer(learner, nodeId, nodeCount, logger))
+  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, loggers: Set[ActorRef] = Set()): Props =
+    Props(new Proposer(learner, nodeId, nodeCount, loggers))
 
   case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
 
@@ -73,7 +73,7 @@ object Proposer {
 }
 
 // @todo logger - null to Option
-class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, val logger: Option[ActorRef])
+class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, val loggers: Set[ActorRef])
   extends Actor with ActorLogging with Timers {
 
   import Proposer._
@@ -133,7 +133,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
 
     case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) =>
       val Some(PaxosInstanceState(currentMo)) = paxosState
-
+      // @todo move all logging to special actor
       if(messageMo == currentMo) {
         val st = state[Phase1]
 
@@ -313,6 +313,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     timers.cancel(conf.key)
   }
 
-  def logg(msg: LogMessage): Unit = logger.foreach(_ ! msg)
+  def logg(msg: LogMessage): Unit = loggers.foreach(_ ! msg)
 
 }

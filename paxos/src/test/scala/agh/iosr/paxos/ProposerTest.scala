@@ -65,7 +65,7 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     val learnerProbe = TestProbe()
     val commProbe = TestProbe()
     val listener = TestProbe()
-    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Some(listener.ref)))
+    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref)))
     commProbe.send(proposer, Ready)
     learnerProbe.expectMsg(LearnerSubscribe())
     (MockLogger(listener), MockCommunicator(commProbe), proposer)
@@ -101,30 +101,15 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
   val RETRANSMISSION_TIMEOUT = 200 // in ms
   val INSTANCE_TIMEOUT = 2000 // in ms
+  val NODE_COUNT = 4
 
   import Proposer._
 
-  val pNodeId: NodeId = 2
-  val nodeCount: NodeId = 4
-  var testProposer: ActorRef = _
-  val testLearner: TestProbe = TestProbe()
-  val testLogger: TestProbe = TestProbe()
-  val testCommunicator: TestProbe = TestProbe()
-
-  def communicateProposer(msg: Any): Unit = {
-    testCommunicator.send(testProposer, msg)
-  }
-
-  val helper = new ProposerTestHelper(nodeCount)
+  val helper = new ProposerTestHelper(NODE_COUNT)
   val startInstanceId = 0
   val startMoForNode0 = {
     val rid = new IdGenerator(0).nextId()
     RoundIdentifier(startInstanceId, rid)
-  }
-
-  override def beforeAll(): Unit = {
-    testProposer = system.actorOf(Proposer.props(testLearner.ref, pNodeId, nodeCount, Some(testLogger.ref)))
-    communicateProposer(Ready)
   }
 
   override def afterAll(): Unit = {
