@@ -65,7 +65,8 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     val learnerProbe = TestProbe()
     val commProbe = TestProbe()
     val listener = TestProbe()
-    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref)))
+    val printer = system.actorOf(Printer.props())
+    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref, printer)))
     commProbe.send(proposer, Ready)
     learnerProbe.expectMsg(LearnerSubscribe())
     (MockLogger(listener), MockCommunicator(commProbe), proposer)
@@ -103,7 +104,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
   val INSTANCE_TIMEOUT = 2000 // in ms
   val NODE_COUNT = 4
 
-  import Proposer._
+  import ExecutionTracing._
 
   val helper = new ProposerTestHelper(NODE_COUNT)
   val startInstanceId = 0
@@ -133,10 +134,6 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
         helper.sendKvsGet(ourValue)
         CommTestHelper.expectInstanceStarted(ourValue)
-
-        // testLogger.expectMsg(RequestReceived(KeyValue(key, value)))
-        // testLogger.expectMsg(ContextChange("phase1"))
-        // testLogger.expectMsgClass(classOf[PrepareSent])
       }
 
       "after receiving 1B" - {
@@ -203,7 +200,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
           helper.sendValueChosen(differentValue)
 
           "should start new round for the same value" in {
-            logger.v.expectMsg(RestartingInstance(ourValue))
+            logger.v.expectMsg(RequestProcessingStarted(ourValue))
           }
         }
       }
@@ -254,7 +251,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
           within(0.75*INSTANCE_TIMEOUT millis, 1.25*INSTANCE_TIMEOUT millis) {
             logger.v.receiveWhile() {
-              case InstanceTimeout => true
+              case TimeoutHit(TimeoutType.instance, _) => true
             }
           }
         }
