@@ -220,7 +220,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       val st = state[Phase1]
       val alive = st.promises.keySet ++ st.rejectors
 
-      (0 until nodeCount).filter(!alive.contains(_)).foreach(id => {
+      (0 until nodeCount).filterNot(id => alive.contains(id) || id == nodeId).foreach(id => {
         // @todo helper method for sending (avoid code duplication)
         val msg = Prepare(st.mo)
         communicator ! SendUnicast(msg, id)
@@ -284,7 +284,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     case P2Tick =>
       val cst = state[Phase2]
       val msg = AcceptRequest(cst.mo, cst.votedValue)
-      (0 until nodeCount).filter(cst.nacks.contains).foreach(id => {
+      (0 until nodeCount).filterNot(id => cst.nacks.contains(id) || id == nodeId).foreach(id => {
         communicator ! SendUnicast(msg, id)
       })
       logg(TimeoutHit(TimeoutType.p2b, "retransmitting 2a message"))

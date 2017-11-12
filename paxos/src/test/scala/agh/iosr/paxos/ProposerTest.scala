@@ -8,6 +8,7 @@ import agh.iosr.paxos.predef._
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{TestKit, TestProbe}
 import org.scalatest._
+import org.slf4j.LoggerFactory
 
 case class MockCommunicator(val v: TestProbe) extends AnyVal
 case class MockLogger(val v: TestProbe) extends AnyVal
@@ -118,6 +119,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
   import ExecutionTracing._
 
+  val log = LoggerFactory.getLogger(classOf[ProposerTest])
   val helper = new ProposerTestHelper(NODE_COUNT)
 
   override def afterAll(): Unit = {
@@ -215,7 +217,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       val didntSent = List(3)
 
       def prepareActor(nameSuffix: String) = {
-        implicit val r @ (logger, comm, proposer) = helper.create(s"timeout", false)
+        implicit val r @ (logger, comm, proposer) = helper.create(s"timeout_$nameSuffix", false)
         helper.sendKvsGet(ourValue)
         implicit val rid = CommTestHelper.expectInstanceStarted(ourValue)
         r :+ rid
@@ -223,11 +225,11 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
       "while waiting for 1Bs" - {
         "retransmit to those that didn't respond (and only those)" in {
-          implicit val (logger, comm, proposer, rid) = prepareActor("1b_retransmit")
+          implicit val (logger, comm, proposer, rid) = prepareActor("1b")
           helper.sendP1BsFrom(sent, None)
 
           within (0.75*rt millis, 1.25*rt millis) {
-            comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(Prepare(rid), nid)))
+            comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(Prepare(rid), nid)) :_*)
           }
         }
       }
@@ -242,19 +244,20 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         }
 
         "retransmit to those that didn't respond" in {
-          implicit val (_, comm, proposer, rid) = prepareActor1("2b_timeout")
+          implicit val (_, comm, proposer, rid) = prepareActor1("2b")
 
           within (0.75*rt millis, 1.25*rt millis) {
-            comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(AcceptRequest(rid, ourValue), nid)))
+            comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(AcceptRequest(rid, ourValue), nid)) :_*)
           }
         }
 
-        "abandon ??? if sufficiently long time elapses" in {
-          implicit val (logger, _, proposer, rid) = prepareActor1("instance_timeout")
+        "abandon value if sufficiently long time elapses" in {
+          implicit val (logger, _, proposer, rid) = prepareActor1("instance")
 
           within(0.75*INSTANCE_TIMEOUT millis, 1.25*INSTANCE_TIMEOUT millis) {
-            logger.v.receiveWhile() {
+            logger.v.fishForMessage() {
               case TimeoutHit(TimeoutType.instance, _) => true
+              case _ => false
             }
           }
         }
