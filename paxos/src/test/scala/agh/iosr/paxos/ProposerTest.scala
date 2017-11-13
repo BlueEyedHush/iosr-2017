@@ -386,15 +386,15 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         }
 
         "when must continue other instance" in {
-
+          executeTest("no_prompt_1b_cont", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue, sendValue = false)(p,c))
         }
 
         "when rejected in 1b" in {
-
+          executeTest("no_prompt_1b", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue, byNack = true, sendValue = false)(p,c))
         }
 
         "when overridden in 2b" in {
-
+          executeTest("no_prompt_2b", (v) => (p,c) => helper.successfulVoting2bTrip(v, altValue, sendValue = false)(p,c))
         }
       }
     }
