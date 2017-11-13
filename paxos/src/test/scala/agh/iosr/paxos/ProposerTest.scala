@@ -19,6 +19,7 @@ case class MockLogger(val v: TestProbe) extends AnyVal
 class ProposerTestHelper(val nodeCount: NodeId) {
   /* small misrepresenation, made for convenience - messages should be sent by Communicator (TestProbe we
    * use in its place, but we  */
+  import scala.concurrent.duration._
 
   val PROPOSER_NODE_ID: NodeId = 0
   private val SMALLEST_ROUND_ID: RoundId = -1 // unconditionally msmaller than anything IdGenerator'll generate
@@ -107,12 +108,16 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     }
   }
 
+  val noMesgWaitTime = 1 second
+
   def successfulVoting(v: KeyValue)(implicit p: ActorRef, c: MockCommunicator) = {
     sendKvsGet(v)
     implicit val rid = expectInstanceStarted(v)
     sendEmptyP1Bs()
     expect2a()
     sendValueChosen(v)
+    c.v.expectNoMessage(noMesgWaitTime)
+    rid
   }
 
   def successfulVoting1bTrip(v: KeyValue, alt: KeyValue)(implicit p: ActorRef, c: MockCommunicator) = {
@@ -127,6 +132,8 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     sendEmptyP1Bs()
     expect2a()
     sendValueChosen(v)
+    c.v.expectNoMessage(noMesgWaitTime)
+    rid
   }
 
   def successfulVoting2bTrip(v: KeyValue, alt: KeyValue)(implicit p: ActorRef, c: MockCommunicator) = {
@@ -142,8 +149,9 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     sendEmptyP1Bs()
     expect2a()
     sendValueChosen(v)
+    c.v.expectNoMessage(noMesgWaitTime)
+    rid
   }
-
 }
 
 
@@ -301,13 +309,32 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       }
     }
 
-    "in case of message from different instance" - {
-      // take him through a couple of rounds, only then check impact (use AutoPilot)
-      "(lower one) should simply ignore it" in {
+    "should be able to establish correct chain of values" - {
+      val values = (1 until 5).map(x => KeyValue(x.toString, x))
+      val altValue = KeyValue("alt", 100)
+
+      type TestCb = KeyValue => (ActorRef, MockCommunicator) => RoundIdentifier
+      def executeTest(name: String, tester: TestCb) = {
+        implicit val r @ (logger, comm, proposer) = helper.create(name, disableTimeouts = false)
+        values.zipWithIndex.foreach { case (v, idx) =>
+          log.info(s"Chain-optimistic: round $idx started")
+          val rid = tester(v)(proposer, comm)
+          logger.v.receiveWhile() {
+            case InstanceSuccessful(iid) if iid == rid.instanceId => true
+          }
+        }
       }
 
-      "(higher one) should take notice and use this information when starting new instance" in {
+      "when starting with fresh instance" in {
+        executeTest("chain_optimistic", (v) => (p,c) => helper.successfulVoting(v)(p,c))
+      }
 
+      "when entered instance that's already in use" in {
+        executeTest("chain_pessimistic_1b", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue)(p,c))
+      }
+
+      "when competing instance won in phase II" in {
+        executeTest("chain_pessimistic_2b", (v) => (p,c) => helper.successfulVoting2bTrip(v, altValue)(p,c))
       }
     }
 
