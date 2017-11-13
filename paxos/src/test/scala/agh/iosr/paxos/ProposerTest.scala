@@ -359,7 +359,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         comm.v.expectNoMessage(1 second)
         // and ensure that votings were actually successful
         rids.foreach(rid => {
-          logger.v.fishForMessage() {
+          logger.v.fishForSpecificMessage() {
             case InstanceSuccessful(iid) if iid == rid.instanceId => true
           }
         })
