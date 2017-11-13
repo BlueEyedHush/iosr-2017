@@ -110,13 +110,15 @@ class ProposerTestHelper(val nodeCount: NodeId) {
 
   val noMesgWaitTime = 1 second
 
-  def successfulVoting(v: KeyValue)(implicit p: ActorRef, c: MockCommunicator) = {
-    sendKvsGet(v)
+  def successfulVoting(v: KeyValue, sendFirstVal: Boolean = true)(implicit p: ActorRef, c: MockCommunicator) = {
+    if (sendFirstVal)
+      sendKvsGet(v)
     implicit val rid = expectInstanceStarted(v)
     sendEmptyP1Bs()
     expect2a()
     sendValueChosen(v)
-    c.v.expectNoMessage(noMesgWaitTime)
+    if (sendFirstVal)
+      c.v.expectNoMessage(noMesgWaitTime)
     rid
   }
 
@@ -344,10 +346,24 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       "when competing instance won in phase II" in {
         executeTest("chain_pessimistic_2b", (v) => (p,c) => helper.successfulVoting2bTrip(v, altValue)(p,c))
       }
-    }
 
-    "should without prompting pick up next value from the queue" in {
+      "taking next one without prompting" in {
+        import scala.concurrent.duration._
+        implicit val r @ (logger, comm, proposer) = helper.create("chian_no_prompting", disableTimeouts = false)
 
+        // first send requests
+        values.foreach(helper.sendKvsGet)
+        // and only now start reponding to Paxos
+        val rids = values.map(helper.successfulVoting(_, sendFirstVal = false))
+        // ensure communicator gets no more messages (no more rounds)
+        comm.v.expectNoMessage(1 second)
+        // and ensure that votings were actually successful
+        rids.foreach(rid => {
+          logger.v.fishForMessage() {
+            case InstanceSuccessful(iid) if iid == rid.instanceId => true
+          }
+        })
+      }
     }
 
     /**
