@@ -106,6 +106,44 @@ class ProposerTestHelper(val nodeCount: NodeId) {
       case message if message == m => true
     }
   }
+
+  def successfulVoting(v: KeyValue)(implicit p: ActorRef, c: MockCommunicator) = {
+    sendKvsGet(v)
+    implicit val rid = expectInstanceStarted(v)
+    sendEmptyP1Bs()
+    expect2a()
+    sendValueChosen(v)
+  }
+
+  def successfulVoting1bTrip(v: KeyValue, alt: KeyValue)(implicit p: ActorRef, c: MockCommunicator) = {
+    /* first round */
+    sendKvsGet(v)
+    implicit var rid = expectInstanceStarted(v)
+    sendValuedP1Bs(alt)
+    expect2a()
+    sendValueChosen(alt)
+    /* second round */
+    rid = expectInstanceStarted(v)
+    sendEmptyP1Bs()
+    expect2a()
+    sendValueChosen(v)
+  }
+
+  def successfulVoting2bTrip(v: KeyValue, alt: KeyValue)(implicit p: ActorRef, c: MockCommunicator) = {
+    /* first round */
+    sendKvsGet(v)
+    implicit var rid = expectInstanceStarted(v)
+    sendEmptyP1Bs()
+    expect2a()
+    sendP2bHigherProposalNack()
+    sendValueChosen(alt)
+    /* second round */
+    rid = expectInstanceStarted(v)
+    sendEmptyP1Bs()
+    expect2a()
+    sendValueChosen(v)
+  }
+
 }
 
 
