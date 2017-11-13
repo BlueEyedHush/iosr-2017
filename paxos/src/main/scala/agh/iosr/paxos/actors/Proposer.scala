@@ -154,7 +154,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       mostRecentlySeenInstanceId += 1
       paxosState = Some(Phase1(mo, v))
 
-    case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) =>
+    case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) if paxosState.isDefined =>
       val Some(PaxosInstanceState(currentMo)) = paxosState
 
       if(messageMo == currentMo) {
@@ -173,11 +173,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
             stopTimer(p1Conf)
             rqQueue.addFirst(st.ourValue)
             logg(RoundOverridden(currentMo, mostRecent, "1b"))
-
-            // to avoid unhandled messages while state is None we go back to idle first
-            logg(ContextChange("idle"))
-            context.become(idle)
-            self ! KvsSend(st.ourValue.k, st.ourValue.v)
+            self ! Start
 
           case pm @ Promise(_, vr, ovv) =>
             if (st.promises.contains(sid)) {

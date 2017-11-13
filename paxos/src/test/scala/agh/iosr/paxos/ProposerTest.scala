@@ -125,11 +125,12 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     sendKvsGet(v)
     implicit var rid = expectInstanceStarted(v)
     if(byNack)
-      sendValuedP1Bs(alt)
-    else
       sendP1bRoundTooOld(alt)
-    expect2a()
-    sendValueChosen(alt)
+    else {
+      sendValuedP1Bs(alt)
+      expect2a()
+      sendValueChosen(alt)
+    }
     /* second round */
     rid = expectInstanceStarted(v)
     sendEmptyP1Bs()
@@ -345,6 +346,10 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       }
     }
 
+    "should without prompting pick up next value from the queue" in {
+
+    }
+
     /**
       * ToDo v2:
       * - take fully through the round
@@ -370,7 +375,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       * - takes proposer through full Paxos instance and monitors if reactions are correct
       *   - +1B contained different value - that value chosen, but then new Paxos instance initiated
       *   - +1B empty - progresses with his own value
-      *   - !(where???) higher id reported in 1B - abandon and start new instance
+      *   - + higher id reported in 1B - abandon and start new instance
       *   - +higher id response in 2B - wait patiently for voting results, then restart (should be-> immediatelly abandon instance,
       *     try new one)
       *   - +no response to 1A -> retransmissions
@@ -379,9 +384,9 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       *   - +instance timeout
       *   - handling of duplicate messages
       *     - multiple 1B and 2B from the same node should be ignored (but their values should be probably reported)
-      *   - upon learning:
-      *     - about success: new value taken
-      *     - about failure: retrying with higher instance id
+      *   - +upon learning:
+      *     - +about success: new value taken
+      *     - +about failure: retrying with higher instance id
     *     - comprehensive, expectMessagesAllOf test
       *
       *
