@@ -78,10 +78,8 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     learnerProbe.expectMsg(LearnerSubscribe())
     (MockLogger(listener), MockCommunicator(commProbe), proposer)
   }
-}
 
-object CommTestHelper {
-    def expectInstanceStarted(v: KeyValue, ridChecker: RoundIdentifier => Boolean = _ => true)(implicit comm: MockCommunicator): RoundIdentifier = {
+  def expectInstanceStarted(v: KeyValue, ridChecker: RoundIdentifier => Boolean = _ => true)(implicit comm: MockCommunicator): RoundIdentifier = {
     comm.v.expectMsgPF() {
       case SendMulticast(Prepare(rid)) if ridChecker(rid) => rid
     }
@@ -109,6 +107,7 @@ object CommTestHelper {
     }
   }
 }
+
 
 class ProposerTest extends TestKit(ActorSystem("MySpec"))
   with FreeSpecLike with Matchers with BeforeAndAfterAll with BeforeAndAfter {
@@ -142,14 +141,14 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         implicit val (logger, comm, proposer) = helper.create("inst_start")
 
         helper.sendKvsGet(ourValue)
-        CommTestHelper.expectInstanceStarted(ourValue)
+        helper.expectInstanceStarted(ourValue)
       }
 
       "after receiving 1B" - {
         def prepareActors(nameSuffix: String) = {
           implicit val r @ (logger, comm, proposer) = helper.create(s"after_1b_recv_$nameSuffix")
           helper.sendKvsGet(ourValue)
-          val rid = CommTestHelper.expectInstanceStarted(ourValue)
+          val rid = helper.expectInstanceStarted(ourValue)
           r :+ rid
         }
 
@@ -157,7 +156,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
           "should initiate 2A with requested value" in {
             implicit val (logger, comm, proposer, rid) = prepareActors("empty")
             helper.sendEmptyP1Bs()
-            CommTestHelper.expect2aWithValue(ourValue)
+            helper.expect2aWithValue(ourValue)
           }
         }
 
@@ -165,7 +164,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
           "should initiate 2A with value already voted on" in {
             implicit val (logger, comm, proposer, rid) = prepareActors("lower_id")
             helper.sendValuedP1Bs(differentValue)
-            CommTestHelper.expect2aWithValue(differentValue)
+            helper.expect2aWithValue(differentValue)
           }
         }
 
@@ -173,7 +172,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
           "should abandon current instance and start new one with the same value" in {
             implicit val (logger, comm, proposer, rid) = prepareActors("higher_id")
             helper.sendP1bRoundTooOld(differentValue)
-            CommTestHelper.expectNewInstanceStarted(ourValue)
+            helper.expectNewInstanceStarted(ourValue)
           }
         }
       }
@@ -184,9 +183,9 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         def prepareActor(nameSuffix: String) = {
           implicit val r @ (logger, comm, proposer) = helper.create(s"2b_reject_$nameSuffix")
           helper.sendKvsGet(ourValue)
-          implicit val rid = CommTestHelper.expectInstanceStarted(ourValue)
+          implicit val rid = helper.expectInstanceStarted(ourValue)
           helper.sendEmptyP1Bs()
-          CommTestHelper.expect2a()
+          helper.expect2a()
           helper.sendP2bHigherProposalNack()
           r :+ rid
         }
@@ -195,7 +194,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
           "should report success" in {
             implicit val (logger: MockLogger, comm, proposer, rid) = prepareActor("value_chosen")
             helper.sendValueChosen(ourValue)
-            CommTestHelper.fishForLoggerMsg(InstanceSuccessful(rid.instanceId))
+            helper.fishForLoggerMsg(InstanceSuccessful(rid.instanceId))
           }
         }
 
@@ -203,7 +202,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
           "should start new round for the same value" in {
             implicit val (logger, comm, proposer, rid) = prepareActor("value_not_chosen")
             helper.sendValueChosen(differentValue)
-            CommTestHelper.fishForLoggerMsg(RequestProcessingStarted(ourValue))
+            helper.fishForLoggerMsg(RequestProcessingStarted(ourValue))
           }
         }
       }
@@ -219,7 +218,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       def prepareActor(nameSuffix: String) = {
         implicit val r @ (logger, comm, proposer) = helper.create(s"timeout_$nameSuffix", false)
         helper.sendKvsGet(ourValue)
-        implicit val rid = CommTestHelper.expectInstanceStarted(ourValue)
+        implicit val rid = helper.expectInstanceStarted(ourValue)
         r :+ rid
       }
 
@@ -238,7 +237,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         def prepareActor1(name: String) = {
           implicit val r @ (logger, comm, proposer, rid) = prepareActor(name)
           helper.sendEmptyP1Bs()
-          CommTestHelper.expect2a()
+          helper.expect2a()
           helper.sendP2bHigherProposalNack(sent)
           r
         }
