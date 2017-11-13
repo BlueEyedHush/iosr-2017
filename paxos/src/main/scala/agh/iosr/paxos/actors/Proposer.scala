@@ -126,7 +126,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
 
   def idle: Receive = {
     case KvsSend(key, value) =>
-      rqQueue.add(KeyValue(key, value))
+      rqQueue.add(KeyValue(key, value) )
       context.become(phase1)
       self ! Start
 

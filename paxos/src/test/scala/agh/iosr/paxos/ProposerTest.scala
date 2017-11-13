@@ -120,11 +120,14 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     rid
   }
 
-  def successfulVoting1bTrip(v: KeyValue, alt: KeyValue)(implicit p: ActorRef, c: MockCommunicator) = {
+  def successfulVoting1bTrip(v: KeyValue, alt: KeyValue, byNack: Boolean = false)(implicit p: ActorRef, c: MockCommunicator) = {
     /* first round */
     sendKvsGet(v)
     implicit var rid = expectInstanceStarted(v)
-    sendValuedP1Bs(alt)
+    if(byNack)
+      sendValuedP1Bs(alt)
+    else
+      sendP1bRoundTooOld(alt)
     expect2a()
     sendValueChosen(alt)
     /* second round */
@@ -317,7 +320,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       def executeTest(name: String, tester: TestCb) = {
         implicit val r @ (logger, comm, proposer) = helper.create(name, disableTimeouts = false)
         values.zipWithIndex.foreach { case (v, idx) =>
-          log.info(s"Chain-optimistic: round $idx started")
+          log.info(s"$name: round $idx started")
           val rid = tester(v)(proposer, comm)
           logger.v.receiveWhile() {
             case InstanceSuccessful(iid) if iid == rid.instanceId => true
@@ -329,8 +332,12 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         executeTest("chain_optimistic", (v) => (p,c) => helper.successfulVoting(v)(p,c))
       }
 
+      "when entered instance that must be continued" in {
+        executeTest("chain_pessimistic_1b_cont", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue)(p,c))
+      }
+
       "when entered instance that's already in use" in {
-        executeTest("chain_pessimistic_1b", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue)(p,c))
+        executeTest("chain_pessimistic_1b", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue, byNack = true)(p,c))
       }
 
       "when competing instance won in phase II" in {
