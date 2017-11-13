@@ -315,56 +315,62 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       }
     }
 
-    "should be able to establish correct chain of values" - {
+    "multi-instance test" - {
       val values = (1 until 5).map(x => KeyValue(x.toString, x))
       val altValue = KeyValue("alt", 100)
 
-      type TestCb = KeyValue => (ActorRef, MockCommunicator) => RoundIdentifier
-      def executeTest(name: String, tester: TestCb) = {
-        implicit val r @ (logger, comm, proposer) = helper.create(name, disableTimeouts = false)
-        values.zipWithIndex.foreach { case (v, idx) =>
-          log.info(s"$name: round $idx started")
-          val rid = tester(v)(proposer, comm)
-          logger.v.receiveWhile() {
-            case InstanceSuccessful(iid) if iid == rid.instanceId => true
+      "should be able to establish correct chain of values" - {
+
+        type TestCb = KeyValue => (ActorRef, MockCommunicator) => RoundIdentifier
+        def executeTest(name: String, tester: TestCb) = {
+          implicit val r @ (logger, comm, proposer) = helper.create(name, disableTimeouts = false)
+          values.zipWithIndex.foreach { case (v, idx) =>
+            log.info(s"$name: round $idx started")
+            val rid = tester(v)(proposer, comm)
+            logger.v.receiveWhile() {
+              case InstanceSuccessful(iid) if iid == rid.instanceId => true
+            }
           }
+        }
+
+        "when starting with fresh instance" in {
+          executeTest("chain_optimistic", (v) => (p,c) => helper.successfulVoting(v)(p,c))
+        }
+
+        "when entered instance that must be continued" in {
+          executeTest("chain_pessimistic_1b_cont", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue)(p,c))
+        }
+
+        "when entered instance that's already in use" in {
+          executeTest("chain_pessimistic_1b", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue, byNack = true)(p,c))
+        }
+
+        "when competing instance won in phase II" in {
+          executeTest("chain_pessimistic_2b", (v) => (p,c) => helper.successfulVoting2bTrip(v, altValue)(p,c))
         }
       }
 
-      "when starting with fresh instance" in {
-        executeTest("chain_optimistic", (v) => (p,c) => helper.successfulVoting(v)(p,c))
-      }
+      "should continue with request queue processing without prompting" - {
+        "in successful case" in {
+          import scala.concurrent.duration._
+          implicit val r @ (logger, comm, proposer) = helper.create("chian_no_prompting", disableTimeouts = false)
 
-      "when entered instance that must be continued" in {
-        executeTest("chain_pessimistic_1b_cont", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue)(p,c))
-      }
-
-      "when entered instance that's already in use" in {
-        executeTest("chain_pessimistic_1b", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue, byNack = true)(p,c))
-      }
-
-      "when competing instance won in phase II" in {
-        executeTest("chain_pessimistic_2b", (v) => (p,c) => helper.successfulVoting2bTrip(v, altValue)(p,c))
-      }
-
-      "taking next one without prompting" in {
-        import scala.concurrent.duration._
-        implicit val r @ (logger, comm, proposer) = helper.create("chian_no_prompting", disableTimeouts = false)
-
-        // first send requests
-        values.foreach(helper.sendKvsGet)
-        // and only now start reponding to Paxos
-        val rids = values.map(helper.successfulVoting(_, sendFirstVal = false))
-        // ensure communicator gets no more messages (no more rounds)
-        comm.v.expectNoMessage(1 second)
-        // and ensure that votings were actually successful
-        rids.foreach(rid => {
-          logger.v.fishForSpecificMessage() {
-            case InstanceSuccessful(iid) if iid == rid.instanceId => true
-          }
-        })
+          // first send requests
+          values.foreach(helper.sendKvsGet)
+          // and only now start reponding to Paxos
+          val rids = values.map(helper.successfulVoting(_, sendFirstVal = false))
+          // ensure communicator gets no more messages (no more rounds)
+          comm.v.expectNoMessage(1 second)
+          // and ensure that votings were actually successful
+          rids.foreach(rid => {
+            logger.v.fishForSpecificMessage() {
+              case InstanceSuccessful(iid) if iid == rid.instanceId => true
+            }
+          })
+        }
       }
     }
+
 
     /**
       * ToDo v2:
