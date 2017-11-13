@@ -110,21 +110,22 @@ class ProposerTestHelper(val nodeCount: NodeId) {
 
   val noMesgWaitTime = 1 second
 
-  def successfulVoting(v: KeyValue, sendFirstVal: Boolean = true)(implicit p: ActorRef, c: MockCommunicator) = {
-    if (sendFirstVal)
+  def successfulVoting(v: KeyValue, sendValue: Boolean = true)(implicit p: ActorRef, c: MockCommunicator) = {
+    if (sendValue)
       sendKvsGet(v)
     implicit val rid = expectInstanceStarted(v)
     sendEmptyP1Bs()
     expect2a()
     sendValueChosen(v)
-    if (sendFirstVal)
+    if (sendValue)
       c.v.expectNoMessage(noMesgWaitTime)
     rid
   }
 
-  def successfulVoting1bTrip(v: KeyValue, alt: KeyValue, byNack: Boolean = false)(implicit p: ActorRef, c: MockCommunicator) = {
+  def successfulVoting1bTrip(v: KeyValue, alt: KeyValue, byNack: Boolean = false, sendValue: Boolean = true)(implicit p: ActorRef, c: MockCommunicator) = {
     /* first round */
-    sendKvsGet(v)
+    if (sendValue)
+      sendKvsGet(v)
     implicit var rid = expectInstanceStarted(v)
     if(byNack)
       sendP1bRoundTooOld(alt)
@@ -138,13 +139,15 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     sendEmptyP1Bs()
     expect2a()
     sendValueChosen(v)
-    c.v.expectNoMessage(noMesgWaitTime)
+    if (sendValue)
+      c.v.expectNoMessage(noMesgWaitTime)
     rid
   }
 
-  def successfulVoting2bTrip(v: KeyValue, alt: KeyValue)(implicit p: ActorRef, c: MockCommunicator) = {
+  def successfulVoting2bTrip(v: KeyValue, alt: KeyValue, sendValue: Boolean = true)(implicit p: ActorRef, c: MockCommunicator) = {
     /* first round */
-    sendKvsGet(v)
+    if (sendValue)
+      sendKvsGet(v)
     implicit var rid = expectInstanceStarted(v)
     sendEmptyP1Bs()
     expect2a()
@@ -155,7 +158,8 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     sendEmptyP1Bs()
     expect2a()
     sendValueChosen(v)
-    c.v.expectNoMessage(noMesgWaitTime)
+    if (sendValue)
+      c.v.expectNoMessage(noMesgWaitTime)
     rid
   }
 }
@@ -351,22 +355,46 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       }
 
       "should continue with request queue processing without prompting" - {
-        "in successful case" in {
+        type TestCb = KeyValue => (ActorRef, MockCommunicator) => RoundIdentifier
+        def executeTest(name: String, tester: TestCb) = {
           import scala.concurrent.duration._
-          implicit val r @ (logger, comm, proposer) = helper.create("chian_no_prompting", disableTimeouts = false)
+
+          implicit val (logger, comm, proposer) = helper.create(name, disableTimeouts = false)
 
           // first send requests
           values.foreach(helper.sendKvsGet)
+
           // and only now start reponding to Paxos
-          val rids = values.map(helper.successfulVoting(_, sendFirstVal = false))
+          val rids = values.map(v => {
+            log.info(s"new round")
+            tester(v)(proposer, comm)
+          })
+
           // ensure communicator gets no more messages (no more rounds)
           comm.v.expectNoMessage(1 second)
+
           // and ensure that votings were actually successful
           rids.foreach(rid => {
             logger.v.fishForSpecificMessage() {
               case InstanceSuccessful(iid) if iid == rid.instanceId => true
             }
           })
+        }
+
+        "in successful case" in {
+          executeTest("no_prompt_opt", (v) => (p, c) => helper.successfulVoting(v, sendValue = false)(p,c))
+        }
+
+        "when must continue other instance" in {
+
+        }
+
+        "when rejected in 1b" in {
+
+        }
+
+        "when overridden in 2b" in {
+
         }
       }
     }
