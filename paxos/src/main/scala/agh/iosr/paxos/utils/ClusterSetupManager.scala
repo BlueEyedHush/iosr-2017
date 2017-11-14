@@ -25,7 +25,7 @@ class ClusterSetupManager {
         val system = ActorSystem("Node" + id)
         val acceptor = system.actorOf(Props(new Acceptor()))
         val learner = system.actorOf(Props(new Learner()))
-        val proposer = system.actorOf(Props(new Proposer(learner, id, positive)))
+        val proposer = system.actorOf(Proposer.props(learner, id, positive))
         val kvs = system.actorOf(Props(new Kvs(learner, proposer)))
         val communicator = system.actorOf(Communicator.props(Set(acceptor, learner, proposer), address, ipToIdMap, idToIpMap))
         nodes += (id -> NodeEntry(system, proposer, acceptor, learner, kvs, communicator))

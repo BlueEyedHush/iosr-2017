@@ -189,7 +189,9 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
     "should correctly register communicator" in {
       implicit val (probe, comm, proposer) = helper.create("comm_test")
-      probe.v.expectMsg(CommInitialized(comm.v.ref))
+      probe.v.fishForSpecificMessage() {
+        case CommInitialized(ref) if comm.v.ref == ref => true
+      }
     }
 
     "in phase 1" - {

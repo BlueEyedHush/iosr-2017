@@ -120,7 +120,9 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
   override def receive = {
     case Ready =>
       logg(ContextChange("ready"))
+
       communicator = sender()
+      logg(CommInitialized(communicator))
 
       // @todo attach logger in local test scenario
       if (rqQueue.size() > 0) {
@@ -134,7 +136,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
         context.become(idle)
       }
 
-      logg(CommInitialized(communicator))
 
     case KvsSend(key, value) =>
       val kv = KeyValue(key, value)
