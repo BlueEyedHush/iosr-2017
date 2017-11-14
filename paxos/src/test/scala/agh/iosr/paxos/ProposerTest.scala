@@ -73,7 +73,7 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     val learnerProbe = TestProbe()
     val commProbe = TestProbe()
     val listener = TestProbe()
-    val printer = system.actorOf(Printer.props(), s"${actorName}_p")
+    val printer = system.actorOf(Printer.props(PROPOSER_NODE_ID), s"${actorName}_p")
     val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref, printer), disableTimeouts), actorName)
     commProbe.send(proposer, Ready)
     learnerProbe.expectMsg(LearnerSubscribe())
@@ -248,7 +248,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
         "but value gets chosen" - {
           "should report success" in {
-            implicit val (logger: MockLogger, comm, proposer, rid) = prepareActor("value_chosen")
+            implicit val (logger: MockLogger, comm, proposer, rid: RoundIdentifier) = prepareActor("value_chosen")
             helper.sendValueChosen(ourValue)
             helper.fishForLoggerMsg(InstanceSuccessful(rid.instanceId))
           }
@@ -280,7 +280,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
       "while waiting for 1Bs" - {
         "retransmit to those that didn't respond (and only those)" in {
-          implicit val (logger, comm, proposer, rid) = prepareActor("1b")
+          implicit val (logger, comm: MockCommunicator, proposer, rid) = prepareActor("1b")
           helper.sendP1BsFrom(sent, None)
 
           within (0.75*rt millis, 1.25*rt millis) {
@@ -299,7 +299,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         }
 
         "retransmit to those that didn't respond" in {
-          implicit val (_, comm, proposer, rid) = prepareActor1("2b")
+          implicit val (_, comm: MockCommunicator, proposer, rid) = prepareActor1("2b")
 
           within (0.75*rt millis, 1.25*rt millis) {
             comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(AcceptRequest(rid, ourValue), nid)) :_*)
@@ -307,7 +307,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         }
 
         "abandon value if sufficiently long time elapses" in {
-          implicit val (logger, _, proposer, rid) = prepareActor1("instance")
+          implicit val (logger: MockLogger, _, proposer, rid) = prepareActor1("instance")
 
           within(0.75*INSTANCE_TIMEOUT millis, 1.25*INSTANCE_TIMEOUT millis) {
             logger.v.fishForMessage() {

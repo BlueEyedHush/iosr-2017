@@ -5,8 +5,9 @@ import java.net.InetSocketAddress
 import agh.iosr.paxos._
 import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef.{IdToIpMap, IpToIdMap, NodeId}
-import agh.iosr.paxos.utils.Serializer
+import agh.iosr.paxos.utils.{FileLog, Serializer}
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.event.LoggingAdapter
 import akka.io.{IO, Udp}
 
 case class SendUnicast(data: SendableMessage, remote: NodeId)
@@ -25,6 +26,9 @@ class Communicator(subscribers: Set[ActorRef], myAddress: InetSocketAddress, ipT
   import context.system
   private val serializer = new Serializer()
 
+  private implicit val implId: NodeId = ipToIdMap(myAddress)
+  private implicit val implLog: LoggingAdapter = log
+
   IO(Udp) ! Udp.Bind(self, myAddress)
 
   def receive: Receive = {
@@ -36,12 +40,16 @@ class Communicator(subscribers: Set[ActorRef], myAddress: InetSocketAddress, ipT
   def ready(socket: ActorRef): Receive = {
     case Udp.Received(data, remoteIp) =>
       val remoteId: NodeId = if (remoteIp != null) ipToIdMap(remoteIp) else predef.NULL_NODE_ID
-      subscribers.foreach(_ ! ReceivedMessage(serializer.deserialize(data), remoteId))
+      val msg = ReceivedMessage(serializer.deserialize(data), remoteId)
+      FileLog.info(msg)
+      subscribers.foreach(_ ! msg)
 
-    case SendUnicast(data, remoteId) =>
+    case msg @ SendUnicast(data, remoteId) =>
+      FileLog.info(msg)
       socket ! Udp.Send(serializer.serialize(data), idToIpMap(remoteId))
 
-    case SendMulticast(data) =>
+    case msg @ SendMulticast(data) =>
+      FileLog.info(msg)
       val serializedData = serializer.serialize(data)
       ipToIdMap.keys.foreach(remoteIp => socket ! Udp.Send(serializedData, remoteIp))
   }

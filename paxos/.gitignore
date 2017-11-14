@@ -2,3 +2,4 @@
 target/
 deploy/provision/roles/
 *.retry
+logs/
