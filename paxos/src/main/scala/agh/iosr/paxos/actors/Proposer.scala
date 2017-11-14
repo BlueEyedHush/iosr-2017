@@ -79,6 +79,7 @@ object ExecutionTracing {
   case class InstanceSuccessful(instance: InstanceId) extends LogMessage
   case class VotingUnsuccessful(instance: InstanceId, value: KeyValue) extends LogMessage
   case class TimeoutHit(which: TimeoutType.Value, comment: String = "") extends LogMessage
+  case class QueueEmpty() extends LogMessage
 }
 
 object Printer {
@@ -126,7 +127,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
 
   def idle: Receive = {
     case KvsSend(key, value) =>
-      rqQueue.add(KeyValue(key, value))
+      rqQueue.add(KeyValue(key, value) )
       context.become(phase1)
       self ! Start
 
@@ -138,6 +139,11 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     case KvsSend(key, value) =>
       rqQueue.addLast(KeyValue(key, value))
       logg(RequestQueued(KeyValue(key, value), "phase1"))
+
+    case Start if rqQueue.size() == 0 =>
+      logg(QueueEmpty())
+      logg(ContextChange("idle"))
+      context.become(idle)
 
     case Start if rqQueue.size() > 0 =>
       val v = rqQueue.pop()
@@ -154,7 +160,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       mostRecentlySeenInstanceId += 1
       paxosState = Some(Phase1(mo, v))
 
-    case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) =>
+    case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) if paxosState.isDefined =>
       val Some(PaxosInstanceState(currentMo)) = paxosState
 
       if(messageMo == currentMo) {
@@ -173,11 +179,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
             stopTimer(p1Conf)
             rqQueue.addFirst(st.ourValue)
             logg(RoundOverridden(currentMo, mostRecent, "1b"))
-
-            // to avoid unhandled messages while state is None we go back to idle first
-            logg(ContextChange("idle"))
-            context.become(idle)
-            self ! KvsSend(st.ourValue.k, st.ourValue.v)
+            self ! Start
 
           case pm @ Promise(_, vr, ovv) =>
             if (st.promises.contains(sid)) {
@@ -245,8 +247,9 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
           logg(InstanceSuccessful(iid))
           // mission accomplished, we can go back to idle
           paxosState = None
-          context.become(idle)
-          logg(ContextChange("idle"))
+          context.become(phase1)
+          logg(ContextChange("phase1"))
+          self ! Start
           // @todo we could also inform user that we are ready for his next request
         } else {
           logg(VotingUnsuccessful(iid, votedValue))
@@ -294,8 +297,9 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       logg(TimeoutHit(TimeoutType.instance, "abandoning"))
 
       paxosState = None
-      context.become(idle)
-      logg(ContextChange("idle"))
+      context.become(phase1)
+      logg(ContextChange("phase1"))
+      self ! Start
       // @todo: good place to inform client we are free
 
   }
