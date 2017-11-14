@@ -1,0 +1,49 @@
+---
+
+#
+# Provision stuff on AWS
+#
+
+- name: "ensure security group exists"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+  - global_vars.yml
+  tasks:
+  - ec2_group:
+      name: csg-kubernetes-cluster
+      description: "security group used by paxos servers"
+      region: "{{ aws_region }}"
+      state: present
+      rules:
+      - proto: all
+        from_port: 0
+        to_port: 65535
+        cidr_ip: 0.0.0.0/0
+      rules_egress:
+      - proto: all
+        from_port: 0
+        to_port: 65535
+        cidr_ip: 0.0.0.0/0
+
+
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+  - global_vars.yml
+  tasks:
+  - ec2:
+      region: "{{ aws_region }}"
+      instance_type: t2.micro
+      instance_tags:
+        Name: paxos-server
+      count_tag:
+        Name: paxos-server
+      exact_count: 3
+      image: "{{ per_region[aws_region]['ami'] }}"
+      key_name: kubernetes-cluster
+      groups:
+      - default
+      - csg-kubernetes-cluster

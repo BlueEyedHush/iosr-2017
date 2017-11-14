@@ -1,0 +1,41 @@
+---
+
+#
+# Deployment
+# Written with Debian in mind
+
+- hosts: tag_Name_paxos_server
+  gather_facts: false
+  become: true
+  become_method: sudo
+  vars_files:
+  - global_vars.yml
+  tasks:
+  - name: "install python 2"
+    raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+
+- hosts: tag_Name_paxos_server
+  become: true
+  become_method: sudo
+  vars_files:
+  - global_vars.yml
+  tasks:
+  - command: "apt-get update"
+  - apt:
+      name: openjdk-8-jdk
+      state: present
+  - apt:
+      name: ruby
+      state: present
+  - apt:
+      name: wget
+      state: present
+  - get_url:
+      url: "{{ per_region[aws_region]['code_deploy_url'] }}"
+      dest: "/home/ubuntu"
+  - file:
+      path: "/home/ubuntu/install"
+      mode: 0700
+  - command: "./install auto"
+    args:
+      chdir: "/home/ubuntu"

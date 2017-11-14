@@ -9,6 +9,7 @@ object Messages {
   case class KvsGetRequest(key: Key)
   case class KvsGetResponse(key: Key, value: Option[Value])
 
+  // @todo make this case object
   case class LearnerSubscribe()
   case class ValueLearned(when: InstanceId, key: String, value: Value)
 
@@ -26,7 +27,7 @@ object Messages {
   case class Accepted(mo: RoundIdentifier, v: KeyValue) extends ConsensusMessage
 
   /** NACK for phase 1 */
-  case class RoundTooOld(mo: RoundIdentifier, mostRecentKnown: InstanceId) extends ConsensusMessage
+  case class RoundTooOld(mo: RoundIdentifier, mostRecentKnown: RoundId) extends ConsensusMessage
   /** NACK for phase 2 */
   case class HigherProposalReceived(mo: RoundIdentifier, roundId: RoundId) extends ConsensusMessage
 

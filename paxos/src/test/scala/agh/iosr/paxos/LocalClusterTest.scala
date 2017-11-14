@@ -2,11 +2,10 @@ package agh.iosr.paxos
 
 import agh.iosr.paxos.actors.{Communicator, Ready, ReceivedMessage, SendUnicast}
 import agh.iosr.paxos.messages.Messages.{AcceptRequest, Accepted, LearnerSubscribe, ValueLearned}
-import agh.iosr.paxos.predef.{KeyValue, RoundIdentifier}
-import agh.iosr.paxos.utils.{ClusterInfo, LocalClusterSetupManager}
+import agh.iosr.paxos.predef.{IpToIdMap, KeyValue, RoundIdentifier}
+import agh.iosr.paxos.utils.{ClusterInfo, ElementNotFound, LocalClusterSetupManager}
 import akka.actor.ActorSystem
-import akka.testkit.{ImplicitSender, TestKit}
-import com.typesafe.config.{Config, ConfigFactory}
+import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
 class LocalClusterTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
@@ -19,33 +18,43 @@ class LocalClusterTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
   "Learners and acceptors" must {
 
     "communicate with each other" in {
-      implicit val config: Config = ConfigFactory.load("local-cluster-test.conf")
-
       val instanceId = 8
       val roundId = 4
       val key = "TestKey"
       val value = 14
 
-      val manager = new LocalClusterSetupManager()
-      val (actualIpToId, actualIdToIp) = ClusterInfo.nodeMapsFromConf()
-      val myAddress = ClusterInfo.toInetSocketAddress("localhost:9992").get
-      val ipToId = actualIpToId + (myAddress -> -99)
-      val idToIp = actualIdToIp + (-99 -> myAddress)
+      val clusterIdToIp: IpToIdMap = List(
+        "localhost:2550",
+        "localhost:2551",
+        "localhost:2552",
+      ).map(ClusterInfo.toInetSocketAddress(_).get).zipWithIndex.toMap
+      val listener = ClusterInfo.toInetSocketAddress("localhost:9992").get
 
-      manager.setup(idToIp)
+      val manager = new LocalClusterSetupManager(clusterIdToIp, listener)
+      manager.setup()
 
-      val testCommunicator = system.actorOf(Communicator.props(Set(self), myAddress, ipToId, idToIp))
+      /* testCommunicator allows us to get a inside look at communication between actor systems created by
+      * LocalClusterSetupManager */
+      val (combinedIpToIdMap, combinedIdToIpMap) = manager.getCombinedMaps()
+      val testSubscriber = TestProbe()
+      val testCommunicator = system.actorOf(Communicator.props(Set(testSubscriber.ref), listener, combinedIpToIdMap, combinedIdToIpMap))
+      testSubscriber.expectMsg(Ready)
 
-      manager.getNodeActor(0, "learner") match {
+      /* we also subscribe to one of the learners (from real cluster) so that we are able to see ValueLearned */
+      val nodeId = 1
+      manager.getNodeActor(nodeId, "learner") match {
         case Some(actorRef) => actorRef ! LearnerSubscribe()
-        case None => throw new IllegalArgumentException()
+        case None => throw ElementNotFound
       }
 
-      testCommunicator ! SendUnicast(AcceptRequest(RoundIdentifier(instanceId, roundId), KeyValue(key, value)), 1)
+      /* since we test without proposer, we directly send phase 2A message via our testCommunicator*/
+      val remoteId = 0
+      testCommunicator ! SendUnicast(AcceptRequest(RoundIdentifier(instanceId, roundId), KeyValue(key, value)), remoteId)
+      testSubscriber.expectMsg(ReceivedMessage(Accepted(RoundIdentifier(instanceId, roundId), KeyValue(key, value)), remoteId))
 
       expectMsg(ValueLearned(instanceId, key, value))
 
-      manager.terminate(idToIp)
+      manager.terminate()
     }
   }
 

@@ -4,6 +4,7 @@ import java.util
 import java.util.concurrent.TimeUnit
 
 import agh.iosr.paxos.messages.Messages._
+import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
 import agh.iosr.paxos.utils._
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
@@ -19,12 +20,11 @@ Checklist:
 
 
 object Proposer {
-  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId): Props =
-    Props(new Proposer(learner, nodeId, nodeCount))
+  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, loggers: Set[ActorRef] = Set(), disableTimeouts: Boolean = false): Props =
+    Props(new Proposer(learner, nodeId, nodeCount, loggers, disableTimeouts))
 
   case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
 
-  // @todo put this shit in companion object
   sealed trait PaxosInstanceState {
     def mo: RoundIdentifier
   }
@@ -48,7 +48,6 @@ object Proposer {
 
   case object Start
 
-
   case object P1Tick
   case object P2Tick
   case object Timeout
@@ -59,9 +58,45 @@ object Proposer {
   private val tConf = TimerConf("timeout", 2000, Timeout)
 }
 
-class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
+object ExecutionTracing {
+  object TimeoutType extends Enumeration {
+    val p1b, p2b, instance = Value
+  }
+
+
+  trait LogMessage
+  case class CommInitialized(comm: ActorRef) extends LogMessage
+  case class ContextChange(to: String) extends LogMessage
+  case class NewPromise(sender: NodeId, cm: Promise) extends LogMessage
+  case class PromiseDuplicate(sender: NodeId, cm: Promise) extends LogMessage
+  case class RequestProcessingStarted(req: KeyValue) extends LogMessage
+  case class RequestQueued(req: KeyValue, phase: String = "") extends LogMessage
+  case class PrepareSent(ri: RoundIdentifier, ourV: KeyValue) extends LogMessage
+  case class RoundOverridden(ri: RoundIdentifier, higherId: RoundId, phase: String) extends LogMessage
+  case class InitiatingVoting(ri: RoundIdentifier, proposal: KeyValue, ourV: KeyValue) extends LogMessage
+  case class IgnoringInstance(ignored: InstanceId, current: InstanceId, m: SendableMessage) extends LogMessage
+  case class IgnoringRound(instance: InstanceId, ignored: RoundId, current: RoundId, m: SendableMessage) extends LogMessage
+  case class InstanceSuccessful(instance: InstanceId) extends LogMessage
+  case class VotingUnsuccessful(instance: InstanceId, value: KeyValue) extends LogMessage
+  case class TimeoutHit(which: TimeoutType.Value, comment: String = "") extends LogMessage
+  case class QueueEmpty() extends LogMessage
+}
+
+object Printer {
+  def props(): Props = Props(new Printer)
+}
+
+class Printer extends Actor with ActorLogging {
+  override def receive = {
+    case m => log.info(s"$m")
+  }
+}
+
+
+class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, val loggers: Set[ActorRef], val disableTimeouts: Boolean)
   extends Actor with ActorLogging with Timers {
 
+  import ExecutionTracing._
   import Proposer._
 
   private val minQuorumSize = nodeCount/2 + 1
@@ -79,53 +114,70 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
     super.preStart()
 
     // @todo learner doesn't send anything back, so this might be susceptible to races
-    learner ! LearnerSubscribe
+    learner ! LearnerSubscribe()
   }
 
   override def receive = {
     case Ready =>
-      println("Proposer:" + self + " @ Ready")
+      logg(ContextChange("ready"))
       communicator = sender()
-      context.become(idle)
+
+      // @todo attach logger in local test scenario
       if (rqQueue.size() > 0) {
-        val v = rqQueue.pop()
-        println("%%%" + v)
-        self ! KvsSend(v.k,v.v)
+        /* process messages that were enqueued while we were waiting for UDP */
+        logg(ContextChange("phase1"))
+        context.become(phase1)
+        self ! Start
+      } else {
+        /* otherwise just go to idle */
+        logg(ContextChange("idle"))
+        context.become(idle)
       }
 
-    case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
-      println("Proposer:" + self + " @ phase0/KvsSend")
+      logg(CommInitialized(communicator))
+
+    case KvsSend(key, value) =>
+      val kv = KeyValue(key, value)
+      rqQueue.addLast(kv)
+      logg(RequestQueued(kv))
   }
 
   def idle: Receive = {
     case KvsSend(key, value) =>
-      println("Proposer:" + self + " @ KvsSend")
       rqQueue.add(KeyValue(key, value))
       context.become(phase1)
       self ! Start
 
+      logg(RequestQueued(KeyValue(key, value), "idle"))
+      logg(ContextChange("phase1"))
   }
 
   def phase1: Receive = {
-    case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
-      println("Proposer:" + self + " @ phase1/KvsSend")
+    case KvsSend(key, value) =>
+      rqQueue.addLast(KeyValue(key, value))
+      logg(RequestQueued(KeyValue(key, value), "phase1"))
+
+    case Start if rqQueue.size() == 0 =>
+      logg(QueueEmpty())
+      logg(ContextChange("idle"))
+      context.become(idle)
 
     case Start if rqQueue.size() > 0 =>
-      println("Proposer:" + self + " @ phase1/Start")
       val v = rqQueue.pop()
+      logg(RequestProcessingStarted(v))
 
       val iid = mostRecentlySeenInstanceId + 1
       val rid = idGen.nextId()
       val mo = RoundIdentifier(iid, rid)
 
       communicator ! SendMulticast(Prepare(mo))
+      logg(PrepareSent(mo, v))
       startTimer(p1Conf)
 
       mostRecentlySeenInstanceId += 1
       paxosState = Some(Phase1(mo, v))
 
-    case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) =>
-      println("Proposer:" + self + " @ phase1/ReceivedMessage")
+    case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) if paxosState.isDefined =>
       val Some(PaxosInstanceState(currentMo)) = paxosState
 
       if(messageMo == currentMo) {
@@ -144,14 +196,15 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
             paxosState = None
             stopTimer(p1Conf)
             rqQueue.addFirst(st.ourValue)
+            logg(RoundOverridden(currentMo, mostRecent, "1b"))
             self ! Start
 
-          case Promise(_, vr, ovv) =>
-            println("Proposer:" + self + " @ Promise")
+          case pm @ Promise(_, vr, ovv) =>
             if (st.promises.contains(sid)) {
-              log.info(s"Already got promise from $sid, must be a duplicate: $m")
+              logg(PromiseDuplicate(sid, pm))
             } else {
               st.promises += (sid -> RPromise(vr, ovv))
+              logg(NewPromise(sid, pm))
 
               if (st.promises.size >= minQuorumSize) {
                 stopTimer(p1Conf)
@@ -159,10 +212,12 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
                 val v = pickValueToVote(st.promises, currentMo.roundId).getOrElse(st.ourValue)
 
                 communicator ! SendMulticast(AcceptRequest(currentMo, v))
+                logg(InitiatingVoting(currentMo, v, st.ourValue))
 
                 // enter Phase 2
                 paxosState = Some(Phase2(currentMo, v, st.ourValue))
                 context.become(phase2)
+                logg(ContextChange("phase2"))
                 startTimer(p2Conf)
                 startTimer(tConf)
               }
@@ -174,14 +229,12 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
 
       } else {
         if (messageMo.instanceId != currentMo.instanceId) {
-          log.info(s"Got message from instance (${messageMo.instanceId}) != current (${currentMo.instanceId}), " +
-            s"ignoring: $m")
+          logg(IgnoringInstance(messageMo.instanceId, currentMo.instanceId, m))
         } else {
           if (messageMo.roundId > currentMo.roundId) {
-            log.info(s"Higher round noticed, but maybe our proposal was chosen before?")
+            logg(IgnoringRound(messageMo.instanceId, messageMo.roundId, currentMo.roundId, m))
           } else if (messageMo.roundId < currentMo.roundId) {
-            log.info(s"Got message from same instance (${messageMo.instanceId}), but lower round (${messageMo.roundId}, " +
-              s"current: ${currentMo.roundId}), ignoring: $m")
+            logg(IgnoringRound(messageMo.instanceId, messageMo.roundId, currentMo.roundId, m))
           }
         }
     }
@@ -190,17 +243,21 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
       val st = state[Phase1]
       val alive = st.promises.keySet ++ st.rejectors
 
-      (0 until nodeCount).filter(!alive.contains(_)).foreach(id => {
+      (0 until nodeCount).filterNot(id => alive.contains(id) || id == nodeId).foreach(id => {
         // @todo helper method for sending (avoid code duplication)
         val msg = Prepare(st.mo)
         communicator ! SendUnicast(msg, id)
       })
+
+      logg(TimeoutHit(TimeoutType.p1b, s"retransmitting to ${nodeCount - alive.size} nodes"))
+
   }
 
   def phase2: Receive = {
     // we wait for results of round we initiated and we have to make a decision - do we restart or value was voted for
-    case KvsSend(key, value) => rqQueue.addLast(KeyValue(key, value))
-      println("Proposer:" + self + " @ phase2/KvsSend")
+    case KvsSend(key, value) =>
+      rqQueue.addLast(KeyValue(key, value))
+      logg(RequestQueued(KeyValue(key, value), "phase2"))
 
     case ValueLearned(iid, k, v) =>
       println("Proposer:" + self + " @ ValueLearned")
@@ -209,11 +266,15 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
       if (st.mo.instanceId == iid) {
         // OK, results of our round are published
         if (votedValue == st.ourValue) {
+          logg(InstanceSuccessful(iid))
           // mission accomplished, we can go back to idle
           paxosState = None
-          context.become(idle)
+          context.become(phase1)
+          logg(ContextChange("phase1"))
+          self ! Start
           // @todo we could also inform user that we are ready for his next request
         } else {
+          logg(VotingUnsuccessful(iid, votedValue))
           /*
           we have to try once again
           but we might have a problem - if we were trying to complete prevously initiated round, what
@@ -225,7 +286,10 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
 
           paxosState = None
           rqQueue.addFirst(st.ourValue)
+
+          // @todo this looks fishy, probably'll result in some pattern matching errors in ReceiveMessage
           context.become(phase1)
+          logg(ContextChange("phase1"))
           self ! Start
         }
 
@@ -240,23 +304,27 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
       // we might overwrite some values
       // all in all, we cannot do much here
       state[Phase2].nacks += sid
+      logg(RoundOverridden(mmo, higherId, "2b"))
       ()
 
     case P2Tick =>
       println("Proposer:" + self + " @ P2Tick")
       val cst = state[Phase2]
       val msg = AcceptRequest(cst.mo, cst.votedValue)
-      (0 until nodeCount).filter(cst.nacks.contains).foreach(id => {
+      (0 until nodeCount).filterNot(id => cst.nacks.contains(id) || id == nodeId).foreach(id => {
         communicator ! SendUnicast(msg, id)
       })
+      logg(TimeoutHit(TimeoutType.p2b, "retransmitting 2a message"))
 
     case Timeout =>
       println("Proposer:" + self + " @ Timeout")
       /* timeout, we give up */
-      log.info(s"Timeout reached, aborting: ${paxosState.get.mo}")
+      logg(TimeoutHit(TimeoutType.instance, "abandoning"))
 
       paxosState = None
-      context.become(idle)
+      context.become(phase1)
+      logg(ContextChange("phase1"))
+      self ! Start
       // @todo: good place to inform client we are free
 
   }
@@ -294,12 +362,14 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
     largest.headOption
   }
 
-  def startTimer(conf: TimerConf) = {
-    timers.startPeriodicTimer(conf.key, conf.msg, FiniteDuration(conf.msInterval, TimeUnit.MILLISECONDS))
-  }
+  def startTimer(conf: TimerConf) =
+    if (!disableTimeouts)
+      timers.startPeriodicTimer(conf.key, conf.msg, FiniteDuration(conf.msInterval, TimeUnit.MILLISECONDS))
 
-  def stopTimer(conf: TimerConf) = {
-    timers.cancel(conf.key)
-  }
+  def stopTimer(conf: TimerConf) =
+    if (!disableTimeouts)
+      timers.cancel(conf.key)
+
+  def logg(msg: LogMessage): Unit = loggers.foreach(_ ! msg)
 
 }
