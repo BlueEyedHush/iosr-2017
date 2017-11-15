@@ -14,20 +14,21 @@ import scala.util.Random
 
 object Main {
   def main(args: Array[String]) {
-    val sleepTime = 10000 //in milis
+    val sleepTime = 1000 //in milis
     val valuesPerKey = 0.5 // It takes from 0 to 1, if 0 then one key will have many values; if valuesPerKey = 1, then almost every key will have one value
     println("START")
     implicit val config: Config = ConfigFactory.load("application.conf")
     val manager = new ClusterSetupManager()
     val (ipToId, idToIp) = ClusterInfo.nodeMapsFromConf()
-    manager.setup(idToIp, ClusterInfo.myIpFromConf())
-    val system = manager.getActorSystem(0).get
+    val id = manager.setup(idToIp, ClusterInfo.myIpFromConf())
 
-    var proposer = manager.getNodeActor(0, "proposer").get
-    var acceptor = manager.getNodeActor(0, "acceptor").get
-    var learner = manager.getNodeActor(0, "learner").get
-    var kvStore = manager.getNodeActor(0, "kvStore").get
-    var communicator = manager.getNodeActor(0, "communicator").get
+    val system = manager.getActorSystem(id).get
+
+    var proposer = manager.getNodeActor(id, "proposer").get
+    var acceptor = manager.getNodeActor(id, "acceptor").get
+    var learner = manager.getNodeActor(id, "learner").get
+    var kvStore = manager.getNodeActor(id, "kvStore").get
+    var communicator = manager.getNodeActor(id, "communicator").get
 
     val random = new Random
     val keyPrefix = "" + this

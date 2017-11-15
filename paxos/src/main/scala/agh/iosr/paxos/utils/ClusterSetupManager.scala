@@ -12,7 +12,7 @@ class ClusterSetupManager {
 
   var nodes: mutable.Map[NodeId, NodeEntry] = mutable.Map.empty
 
-  def setup(idToIpMap: IdToIpMap, myIp: java.net.InetSocketAddress): Unit = {
+  def setup(idToIpMap: IdToIpMap, myIp: java.net.InetSocketAddress): Int = {
     val ipToIdMap = idToIpMap.map(_.swap)
     val id = ipToIdMap(myIp)
 
@@ -28,6 +28,8 @@ class ClusterSetupManager {
     val kvs = system.actorOf(Props(new Kvs(learner, proposer)))
     val communicator = system.actorOf(Communicator.props(Set(acceptor, learner, proposer), myIp, ipToIdMap, idToIpMap))
     nodes += (id -> NodeEntry(system, proposer, acceptor, learner, kvs, communicator))
+
+    return id
   }
 
   def terminate(idToIpMap: IdToIpMap): Unit = {
