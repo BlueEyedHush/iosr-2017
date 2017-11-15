@@ -2,8 +2,12 @@ package agh.iosr.paxos.client
 
 import java.io.PrintWriter
 
+import com.typesafe.config.ConfigFactory
+
 object AwsMain {
   def main(args: Array[String]): Unit = {
-    new PrintWriter("/tmp/paxos-test-file") { write("file contents"); close }
+    val conf = ConfigFactory.load()
+    val tp = conf.getString("test_propoerty")
+    new PrintWriter("/tmp/paxos-test-file") { write(s"from config: $tp"); close }
   }
 }
