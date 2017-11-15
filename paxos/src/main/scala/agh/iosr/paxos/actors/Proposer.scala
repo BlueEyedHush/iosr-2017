@@ -8,6 +8,7 @@ import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
 import agh.iosr.paxos.utils._
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
+import akka.event.LoggingAdapter
 
 import scala.collection._
 import scala.concurrent.duration.FiniteDuration
@@ -83,12 +84,15 @@ object ExecutionTracing {
 }
 
 object Printer {
-  def props(): Props = Props(new Printer)
+  def props(nodeId: NodeId): Props = Props(new Printer(nodeId))
 }
 
-class Printer extends Actor with ActorLogging {
-  override def receive = {
-    case m => log.info(s"$m")
+class Printer(val nodeId: NodeId) extends Actor with ActorLogging {
+  private implicit val implId: NodeId = nodeId
+  private implicit val implLog: LoggingAdapter = log
+
+  override def receive: Receive = {
+    case m => FileLog.info(m)
   }
 }
 
@@ -98,6 +102,9 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
 
   import ExecutionTracing._
   import Proposer._
+
+  private implicit val implId: NodeId = nodeId
+  private implicit val implLog: LoggingAdapter = log
 
   private val minQuorumSize = nodeCount/2 + 1
 
@@ -322,16 +329,16 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
         }
       case RPromise(NULL_ROUND, None) => ()
       case other =>
-        log.error(s"Got some illegal RPromise: $other")
+        FileLog.error(s"Got some illegal RPromise: $other")
     }
 
     if (largestFound > currentRid) {
-      log.error(s"Stumbled upon something illegal while sifting through received proposals /2A, " +
+      FileLog.error(s"Stumbled upon something illegal while sifting through received proposals /2A, " +
         s"rid ($largestFound) > currentRid ($currentRid)/")
     }
 
     if (largest.size > 1) {
-      log.error(s"Quorum reported in 1B more than one value: $largest")
+      FileLog.error(s"Quorum reported in 1B more than one value: $largest")
     }
 
     largest.headOption
