@@ -8,7 +8,7 @@ import agh.iosr.paxos.predef.{IdToIpMap, IpToIdMap}
 import agh.iosr.paxos.utils.Serializer
 import akka.actor.ActorSystem
 import akka.io.{IO, Udp}
-import akka.testkit.{ImplicitSender, TestKit}
+import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import org.scalatest.{Matchers, WordSpecLike}
 
 case class TestMessage() extends SendableMessage
@@ -76,7 +76,9 @@ class CommunicatorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       )
 
       val (ipToId, idToIp) = generatePrereq(multicastSet)
-      val comm = system.actorOf(Communicator.props(Set(), testActorIp, ipToId, idToIp))
+      val testProbe = TestProbe()
+      val comm = system.actorOf(Communicator.props(Set(testProbe.ref), testActorIp, ipToId, idToIp))
+      testProbe.expectMsg(Ready)
 
       val setLen = multicastSet.size
       multicastSet.slice(1, setLen).foreach {
