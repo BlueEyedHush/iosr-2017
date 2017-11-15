@@ -7,7 +7,7 @@ import com.typesafe.config.ConfigFactory
 object AwsMain {
   def main(args: Array[String]): Unit = {
     val conf = ConfigFactory.load()
-    val tp = conf.getString("test_propoerty")
+    val tp = conf.getString("test_property")
     new PrintWriter("/tmp/paxos-test-file") { write(s"from config: $tp"); close }
   }
 }
