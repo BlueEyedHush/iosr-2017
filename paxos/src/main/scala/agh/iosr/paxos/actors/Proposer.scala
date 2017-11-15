@@ -193,7 +193,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
 
         m match {
           case RoundTooOld(_, mostRecent) =>
-            log.info("Proposer:" + self + " @ RoundTooOld")
             // @todo when we gain possibility of ID correction, modify it here
             // someone is already using this instance - we need to switch to new one
             // we didn't sent 2a yet, so we can simply abandon this instance and try for a new one
@@ -268,7 +267,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       logg(RequestQueued(KeyValue(key, value), "phase2"))
 
     case ValueLearned(iid, k, v) =>
-      log.info("Proposer:" + self + " @ ValueLearned")
       val votedValue = KeyValue(k,v)
       val st = state[Phase2]
       if (st.mo.instanceId == iid) {
@@ -306,7 +304,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       }
 
     case ReceivedMessage(HigherProposalReceived(mmo, higherId), sid) if mmo == paxosState.get.mo =>
-      log.info("Proposer:" + self + " @ HigherProposalReceived")
       // higher proposal appeared while our has been voted on -> but we cannot back off now
       // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
       // we might overwrite some values
@@ -316,7 +313,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       ()
 
     case P2Tick =>
-      log.info("Proposer:" + self + " @ P2Tick")
       val cst = state[Phase2]
       val msg = AcceptRequest(cst.mo, cst.votedValue)
       (0 until nodeCount).filterNot(id => cst.nacks.contains(id) || id == nodeId).foreach(id => {
@@ -325,7 +321,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       logg(TimeoutHit(TimeoutType.p2b, "retransmitting 2a message"))
 
     case Timeout =>
-      log.info("Proposer:" + self + " @ Timeout")
       /* timeout, we give up */
       logg(TimeoutHit(TimeoutType.instance, "abandoning"))
 
