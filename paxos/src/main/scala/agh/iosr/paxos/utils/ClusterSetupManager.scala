@@ -12,25 +12,22 @@ class ClusterSetupManager {
 
   var nodes: mutable.Map[NodeId, NodeEntry] = mutable.Map.empty
 
-  def setup(idToIpMap: IdToIpMap): Unit = {
+  def setup(idToIpMap: IdToIpMap, myIp: java.net.InetSocketAddress): Unit = {
     val ipToIdMap = idToIpMap.map(_.swap)
+    val id = ipToIdMap(myIp)
 
     var positive = 0
     for (id <- idToIpMap) {
       if (id._1 >= 0) positive = positive + 1
     }
 
-    idToIpMap.foreach {
-      case (id, address) if id >= 0 =>  // Negative node id are reserved for test purposes.
-        val system = ActorSystem("Node" + id)
-        val acceptor = system.actorOf(Props(new Acceptor()))
-        val learner = system.actorOf(Props(new Learner()))
-        val proposer = system.actorOf(Proposer.props(learner, id, positive))
-        val kvs = system.actorOf(Props(new Kvs(learner, proposer)))
-        val communicator = system.actorOf(Communicator.props(Set(acceptor, learner, proposer), address, ipToIdMap, idToIpMap))
-        nodes += (id -> NodeEntry(system, proposer, acceptor, learner, kvs, communicator))
-      case _ =>
-    }
+    val system = ActorSystem("Node" + id)
+    val acceptor = system.actorOf(Props(new Acceptor()))
+    val learner = system.actorOf(Props(new Learner()))
+    val proposer = system.actorOf(Proposer.props(learner, id, positive))
+    val kvs = system.actorOf(Props(new Kvs(learner, proposer)))
+    val communicator = system.actorOf(Communicator.props(Set(acceptor, learner, proposer), myIp, ipToIdMap, idToIpMap))
+    nodes += (id -> NodeEntry(system, proposer, acceptor, learner, kvs, communicator))
   }
 
   def terminate(idToIpMap: IdToIpMap): Unit = {
