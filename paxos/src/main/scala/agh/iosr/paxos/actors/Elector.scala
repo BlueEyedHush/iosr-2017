@@ -6,11 +6,21 @@ import akka.actor.{Actor, ActorLogging, Props}
   * ~~~ I'm not sure if mechanism described below is correct, should be checked against some authoritative source ~~~
   *
   * ToDo (wip)
-  * - subscribe to learner
-  * - elector get's communicator he's already subscribed to
-  * - only KvsSend requests go to elector (just like to proposer before)
+  * External:
+  * - use in clients leader instead of proposer
+  * Internal
+  * - skeleton - states and messages
+  *   - subscribe to learner
+  *   - wait for communicator
+  * - message demultiplexing to actors
+  * - Proposer refactoring
   * - leader election mechanism
+  *   - adding tuning capabilities to refactored Proposer
+  *   - starting propsoer when needed
+  *   - keepaliving (timer, reactions, sending)
+  *   - reactions to Paxos messages (spawning special instance and forwarding message to it)
   * - logic for session preallocating (and proposer actor creation)
+  * - set of messages for status logging
   *
   * Our states here:
   * - receive - waiting for Ready, enqueuing requests; after Ready -> LeaderAbsent, start timer
