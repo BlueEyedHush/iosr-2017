@@ -5,8 +5,8 @@
   - global_vars.yml
   tasks:
   - set_fact:
-      my_ip: "{{ ansible_host }}:{{ paxos_port }}"
-      ip_list: "{{ groups['tag_Name_paxos_server'] | join(':{{ paxos_port }},') }}:{{ paxos_port }}"
+      my_ip: "\"{{ ansible_host }}:{{ paxos_port }}\""
+      ip_list: "\"{{ groups['tag_Name_paxos_server'] | join(':{{ paxos_port }}\",\"') }}:{{ paxos_port }}\""
   - template:
       src: "{{ playbook_dir }}/application.conf.j2"
       dest: "{{ paxos_path }}/application.conf"
