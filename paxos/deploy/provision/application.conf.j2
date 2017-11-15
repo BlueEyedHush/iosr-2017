@@ -1,0 +1,10 @@
+
+iosrPaxos {
+  myAddress: {{ my_ip }}
+
+  # must include all nodes (myself too)
+  # all nodes must use here exactly the same order
+  nodes: [
+    {{ ip_list }}
+  ]
+}
