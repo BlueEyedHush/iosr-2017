@@ -23,6 +23,7 @@ class Acceptor()
 
   override def receive: Receive = {
     case Ready =>
+      log.info("Acceptor:" + self + " @ Ready")
       communicator = sender()
       context.become(ready)
   }
@@ -30,8 +31,10 @@ class Acceptor()
   def ready: Receive = {
     case ReceivedMessage(data, remoteId) =>
 
+
       data match {
         case Prepare(RoundIdentifier(instanceId, roundId)) =>
+          log.info(s"Acceptor:" + self + " @ {Prepare(RoundIdentifier("+instanceId+", "+roundId+"))}")
 
           runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, None, NULL_NODE_ID)) match {
             case InstanceState(NULL_ROUND, _, _, _) =>
@@ -50,6 +53,7 @@ class Acceptor()
           }
 
         case AcceptRequest(RoundIdentifier(instanceId, roundId), value) =>
+          log.info("Acceptor:" + self + " @ AcceptRequest(RoundIdentifier)")
           runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, None, NULL_NODE_ID)) match {
             case InstanceState(lastParticipated, lastVoted, vote, lastRemote)
               if roundId >= lastParticipated && (roundId != lastVoted || (vote.contains(value) && remoteId == lastRemote))=>
@@ -58,6 +62,7 @@ class Acceptor()
                 communicator ! SendMulticast(Accepted(RoundIdentifier(instanceId, roundId), value))
 
             case InstanceState(lastParticipated, _, _, _) =>
+              log.info("Acceptor:" + self + " @ InstanceState")
               communicator ! SendUnicast(HigherProposalReceived(RoundIdentifier(instanceId, roundId), lastParticipated), remoteId)
           }
 

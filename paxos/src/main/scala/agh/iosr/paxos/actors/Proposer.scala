@@ -126,15 +126,33 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
 
   override def receive = {
     case Ready =>
-      communicator = sender()
-      context.become(idle)
+      logg(ContextChange("ready"))
 
+      communicator = sender()
       logg(CommInitialized(communicator))
+
+      // @todo attach logger in local test scenario
+      if (rqQueue.size() > 0) {
+        /* process messages that were enqueued while we were waiting for UDP */
+        logg(ContextChange("phase1"))
+        context.become(phase1)
+        self ! Start
+      } else {
+        /* otherwise just go to idle */
+        logg(ContextChange("idle"))
+        context.become(idle)
+      }
+
+
+    case KvsSend(key, value) =>
+      val kv = KeyValue(key, value)
+      rqQueue.addLast(kv)
+      logg(RequestQueued(kv))
   }
 
   def idle: Receive = {
     case KvsSend(key, value) =>
-      rqQueue.add(KeyValue(key, value) )
+      rqQueue.add(KeyValue(key, value))
       context.become(phase1)
       self ! Start
 
@@ -211,6 +229,9 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
                 startTimer(tConf)
               }
             }
+
+
+          case _ =>
         }
 
       } else {
