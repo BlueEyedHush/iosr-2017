@@ -2,3 +2,5 @@
 target/
 deploy/provision/roles/
 *.retry
+__pycache__/
+logs/

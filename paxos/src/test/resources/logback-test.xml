@@ -1,0 +1,11 @@
+<configuration>
+    <root level="DEBUG">
+        <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+            <file>logs/test.log</file>
+            <append>true</append>
+            <encoder>
+                <pattern>%level: %msg%n</pattern>
+            </encoder>
+        </appender>
+    </root>
+</configuration>
