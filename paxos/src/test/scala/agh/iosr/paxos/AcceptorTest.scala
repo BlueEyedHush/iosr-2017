@@ -33,24 +33,24 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val instanceId = 1
       val roundId = 2
       val remoteId = 3
-      communicateAcceptor(ReceivedMessage(Prepare(RoundIdentifier(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(Promise(RoundIdentifier(instanceId, roundId), NULL_ROUND, None), remoteId))
+      communicateAcceptor(ReceivedMessage(Prepare(RegularRoundIdentifier(instanceId, roundId)), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(RegularRoundIdentifier(instanceId, roundId), NULL_ROUND, None), remoteId))
     }
 
     "promise to start participate in a higher round of running instance" in {
       val instanceId = 1
       val roundId = 5
       val remoteId = 4
-      communicateAcceptor(ReceivedMessage(Prepare(RoundIdentifier(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(Promise(RoundIdentifier(instanceId, roundId), NULL_ROUND, None), remoteId))
+      communicateAcceptor(ReceivedMessage(Prepare(RegularRoundIdentifier(instanceId, roundId)), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(RegularRoundIdentifier(instanceId, roundId), NULL_ROUND, None), remoteId))
     }
 
     "repeat last promise of given instance to the same coordinator" in {
       val instanceId = 1
       val roundId = 5
       val remoteId = 4
-      communicateAcceptor(ReceivedMessage(Prepare(RoundIdentifier(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(Promise(RoundIdentifier(instanceId, roundId), NULL_ROUND, None), remoteId))
+      communicateAcceptor(ReceivedMessage(Prepare(RegularRoundIdentifier(instanceId, roundId)), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(RegularRoundIdentifier(instanceId, roundId), NULL_ROUND, None), remoteId))
     }
 
     "vote if it has not voted already or promised not to vote in given round of given instance" in {
@@ -58,8 +58,8 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val roundId = 5
       val remoteId = 3
       val value = KeyValue("a", 10)
-      communicateAcceptor(ReceivedMessage(AcceptRequest(RoundIdentifier(instanceId, roundId), value), remoteId))
-      testCommunicator.expectMsg(SendMulticast(Accepted(RoundIdentifier(instanceId, roundId), value)))
+      communicateAcceptor(ReceivedMessage(AcceptRequest(RegularRoundIdentifier(instanceId, roundId), value), remoteId))
+      testCommunicator.expectMsg(SendMulticast(Accepted(RegularRoundIdentifier(instanceId, roundId), value)))
     }
 
     "repeat the vote only if it is asked to vote for the same value in given round of given instance by the same coordinator" in {
@@ -67,8 +67,8 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val roundId = 5
       val remoteId = 3
       val value = KeyValue("a", 10)
-      communicateAcceptor(ReceivedMessage(AcceptRequest(RoundIdentifier(instanceId, roundId), value), remoteId))
-      testCommunicator.expectMsg(SendMulticast(Accepted(RoundIdentifier(instanceId, roundId), value)))
+      communicateAcceptor(ReceivedMessage(AcceptRequest(RegularRoundIdentifier(instanceId, roundId), value), remoteId))
+      testCommunicator.expectMsg(SendMulticast(Accepted(RegularRoundIdentifier(instanceId, roundId), value)))
     }
 
     "refuse to vote if it is asked to vote for some other value (key) than it already voted for in given round of given instance" in {
@@ -77,8 +77,8 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val remoteId = 3
       val value = KeyValue("x", 10)
       val highestRoundId = 5
-      communicateAcceptor(ReceivedMessage(AcceptRequest(RoundIdentifier(instanceId, roundId), value), remoteId))
-      testCommunicator.expectMsg(SendUnicast(HigherProposalReceived(RoundIdentifier(instanceId, roundId), highestRoundId), remoteId))
+      communicateAcceptor(ReceivedMessage(AcceptRequest(RegularRoundIdentifier(instanceId, roundId), value), remoteId))
+      testCommunicator.expectMsg(SendUnicast(HigherProposalReceived(RegularRoundIdentifier(instanceId, roundId), highestRoundId), remoteId))
     }
 
     "refuse to vote if it is asked to vote for some other value (value) than it already voted for in given round of given instance" in {
@@ -87,8 +87,8 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val remoteId = 3
       val value = KeyValue("a", 8)
       val highestRoundId = 5
-      communicateAcceptor(ReceivedMessage(AcceptRequest(RoundIdentifier(instanceId, roundId), value), remoteId))
-      testCommunicator.expectMsg(SendUnicast(HigherProposalReceived(RoundIdentifier(instanceId, roundId), highestRoundId), remoteId))
+      communicateAcceptor(ReceivedMessage(AcceptRequest(RegularRoundIdentifier(instanceId, roundId), value), remoteId))
+      testCommunicator.expectMsg(SendUnicast(HigherProposalReceived(RegularRoundIdentifier(instanceId, roundId), highestRoundId), remoteId))
     }
 
     "refuse to vote if it is asked to vote by some other coordinator in given round of given instance" in {
@@ -97,8 +97,8 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val remoteId = 8
       val value = KeyValue("a", 10)
       val highestRoundId = 5
-      communicateAcceptor(ReceivedMessage(AcceptRequest(RoundIdentifier(instanceId, roundId), value), remoteId))
-      testCommunicator.expectMsg(SendUnicast(HigherProposalReceived(RoundIdentifier(instanceId, roundId), highestRoundId), remoteId))
+      communicateAcceptor(ReceivedMessage(AcceptRequest(RegularRoundIdentifier(instanceId, roundId), value), remoteId))
+      testCommunicator.expectMsg(SendUnicast(HigherProposalReceived(RegularRoundIdentifier(instanceId, roundId), highestRoundId), remoteId))
     }
 
     "refuse to vote if it promised not to vote in given round of given instance" in {
@@ -107,8 +107,8 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val remoteId = 3
       val value = KeyValue("a", 10)
       val highestRoundId = 5
-      communicateAcceptor(ReceivedMessage(AcceptRequest(RoundIdentifier(instanceId, roundId), value), remoteId))
-      testCommunicator.expectMsg(SendUnicast(HigherProposalReceived(RoundIdentifier(instanceId, roundId), highestRoundId), remoteId))
+      communicateAcceptor(ReceivedMessage(AcceptRequest(RegularRoundIdentifier(instanceId, roundId), value), remoteId))
+      testCommunicator.expectMsg(SendUnicast(HigherProposalReceived(RegularRoundIdentifier(instanceId, roundId), highestRoundId), remoteId))
     }
 
     "inform about last vote in the promise of higher round of given instance" in {
@@ -117,8 +117,8 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val remoteId = 11
       val lastVoted = 5
       val vote = KeyValue("a", 10)
-      communicateAcceptor(ReceivedMessage(Prepare(RoundIdentifier(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(Promise(RoundIdentifier(instanceId, roundId), lastVoted, Some(vote)), remoteId))
+      communicateAcceptor(ReceivedMessage(Prepare(RegularRoundIdentifier(instanceId, roundId)), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(RegularRoundIdentifier(instanceId, roundId), lastVoted, Some(vote)), remoteId))
     }
 
     "vote even if it has not received any prepare message for given instance" in {
@@ -126,8 +126,8 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val roundId = 15
       val remoteId = 22
       val value = KeyValue("s", 15)
-      communicateAcceptor(ReceivedMessage(AcceptRequest(RoundIdentifier(instanceId, roundId), value), remoteId))
-      testCommunicator.expectMsg(SendMulticast(Accepted(RoundIdentifier(instanceId, roundId), value)))
+      communicateAcceptor(ReceivedMessage(AcceptRequest(RegularRoundIdentifier(instanceId, roundId), value), remoteId))
+      testCommunicator.expectMsg(SendMulticast(Accepted(RegularRoundIdentifier(instanceId, roundId), value)))
     }
 
     "replay NAck to other coordinator trying to initiate already seen round of given instance" in {
@@ -135,8 +135,8 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val roundId = 5
       val remoteId = 3
       val highestInstance = 8
-      communicateAcceptor(ReceivedMessage(Prepare(RoundIdentifier(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(RoundTooOld(RoundIdentifier(instanceId, roundId), highestInstance), remoteId))
+      communicateAcceptor(ReceivedMessage(Prepare(RegularRoundIdentifier(instanceId, roundId)), remoteId))
+      testCommunicator.expectMsg(SendUnicast(RoundTooOld(RegularRoundIdentifier(instanceId, roundId), highestInstance), remoteId))
     }
 
     "not perform any action when down and continue work when waken up" in {
@@ -144,11 +144,11 @@ class AcceptorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSender
       val roundId = 2
       val remoteId = 3
       communicateAcceptor(ReceivedMessage(FallAsleep, NULL_NODE_ID))
-      communicateAcceptor(ReceivedMessage(Prepare(RoundIdentifier(instanceId, roundId)), remoteId))
+      communicateAcceptor(ReceivedMessage(Prepare(RegularRoundIdentifier(instanceId, roundId)), remoteId))
       testCommunicator.expectNoMessage(10 seconds)
       communicateAcceptor(ReceivedMessage(WakeUp, NULL_NODE_ID))
-      communicateAcceptor(ReceivedMessage(Prepare(RoundIdentifier(instanceId, roundId)), remoteId))
-      testCommunicator.expectMsg(SendUnicast(Promise(RoundIdentifier(instanceId, roundId), NULL_ROUND, None), remoteId))
+      communicateAcceptor(ReceivedMessage(Prepare(RegularRoundIdentifier(instanceId, roundId)), remoteId))
+      testCommunicator.expectMsg(SendUnicast(Promise(RegularRoundIdentifier(instanceId, roundId), NULL_ROUND, None), remoteId))
     }
 
   }

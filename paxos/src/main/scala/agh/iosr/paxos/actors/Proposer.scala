@@ -19,21 +19,21 @@ object Proposer {
   case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
 
   sealed trait PaxosInstanceState {
-    def mo: RoundIdentifier
+    def mo: RegularRoundIdentifier
   }
 
   object PaxosInstanceState {
-    def unapply(pis: PaxosInstanceState): Option[RoundIdentifier] = Some(pis.mo)
+    def unapply(pis: PaxosInstanceState): Option[RegularRoundIdentifier] = Some(pis.mo)
   }
 
   type PromiseMap = mutable.Map[NodeId, RPromise]
 
-  case class Phase1(mo: RoundIdentifier,
+  case class Phase1(mo: RegularRoundIdentifier,
                     ourValue: KeyValue,
                     rejectors: mutable.Set[NodeId] = mutable.Set(),
                     promises: PromiseMap = mutable.Map[NodeId, RPromise]()) extends PaxosInstanceState
 
-  case class Phase2(mo: RoundIdentifier,
+  case class Phase2(mo: RegularRoundIdentifier,
                     votedValue: KeyValue,
                     ourValue: KeyValue,
                     nacks: mutable.Set[NodeId] = mutable.Set()) extends PaxosInstanceState
@@ -115,7 +115,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
   override def preStart(): Unit = {
     super.preStart()
 
-    learner ! LearnerSubscribe()
+    learner ! LearnerSubscribe
   }
 
   // @todo simply alias to phase1
@@ -159,7 +159,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       // @todo not our responsibility really
       val iid = mostRecentlySeenInstanceId + 1
       val rid = idGen.nextId()
-      val mo = RoundIdentifier(iid, rid)
+      val mo = RegularRoundIdentifier(iid, rid)
 
       communicator ! SendMulticast(Prepare(mo))
       // @todo preparesent without value

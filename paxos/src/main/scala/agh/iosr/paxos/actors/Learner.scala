@@ -29,10 +29,10 @@ class Learner() extends Actor {
   }
 
   def ready: Receive = {
-    case LearnerSubscribe() =>
+    case LearnerSubscribe =>
       subscribers += sender
 
-    case ReceivedMessage(Accepted(RoundIdentifier(instanceId, _), KeyValue(key, value)), _) =>
+    case ReceivedMessage(Accepted(RegularRoundIdentifier(instanceId, _), KeyValue(key, value)), _) =>
       memory.put(key, (instanceId, value))
       subscribers.foreach {_ ! ValueLearned(instanceId, key, value)}
 

@@ -76,7 +76,7 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     val printer = system.actorOf(Printer.props(), s"${actorName}_p")
     val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref, printer), disableTimeouts), actorName)
     commProbe.send(proposer, Ready)
-    learnerProbe.expectMsg(LearnerSubscribe())
+    learnerProbe.expectMsg(LearnerSubscribe)
     (MockLogger(listener), MockCommunicator(commProbe), proposer)
   }
 

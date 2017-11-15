@@ -5,12 +5,11 @@ trait SendableMessage
 object Messages {
   import agh.iosr.paxos.predef._
 
-  case class KvsSend(key: Key, value: Value)
+  case class KvsSend(key: Key, value: Value) extends SendableMessage
   case class KvsGetRequest(key: Key)
   case class KvsGetResponse(key: Key, value: Option[Value])
 
-  // @todo make this case object
-  case class LearnerSubscribe()
+  case object LearnerSubscribe
   case class ValueLearned(when: InstanceId, key: String, value: Value)
 
   sealed trait ConsensusMessage extends SendableMessage {
@@ -25,7 +24,6 @@ object Messages {
   case class Promise(mo: RoundIdentifier, lastRoundVoted: RoundId, ov: Option[KeyValue]) extends ConsensusMessage
   case class AcceptRequest(mo: RoundIdentifier, v: KeyValue) extends ConsensusMessage
   case class Accepted(mo: RoundIdentifier, v: KeyValue) extends ConsensusMessage
-
   /** NACK for phase 1 */
   case class RoundTooOld(mo: RoundIdentifier, mostRecentKnown: RoundId) extends ConsensusMessage
   /** NACK for phase 2 */
