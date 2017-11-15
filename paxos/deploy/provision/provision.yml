@@ -44,6 +44,7 @@
       exact_count: 3
       image: "{{ per_region[aws_region]['ami'] }}"
       key_name: kubernetes-cluster
+      instance_profile_name: "ec2-s3-access"
       groups:
       - default
       - csg-kubernetes-cluster
