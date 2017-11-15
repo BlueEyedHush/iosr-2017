@@ -13,24 +13,20 @@ import akka.actor.{Actor, ActorLogging, Props}
   *   - subscribe to learner
   *   - wait for communicator
   * - message demultiplexing to actors
+  *   - must track instance id's passing by - it's his responsibility now
   * - Proposer refactoring
+  *   - proposer per instance scheme
+  *   - fast rounds support (adaption to leader election should be done 1st)
+  *   - parent-child relationship informing that new instance must be started
   * - leader election mechanism
-  *   - adding tuning capabilities to refactored Proposer
+  *   - add to proposer needed capabilities
   *   - starting propsoer when needed
   *   - keepaliving (timer, reactions, sending)
   *   - reactions to Paxos messages (spawning special instance and forwarding message to it)
   * - logic for session preallocating (and proposer actor creation)
   * - set of messages for status logging
   *
-  * Our states here:
-  * - receive - waiting for Ready, enqueuing requests; after Ready -> LeaderAbsent, start timer
-  * - LeaderAbsent - seding out Prepare's, watching what others send (unitl ElectionTimer)
-  * - LeaderPresent - watching keepalives, forwarding all requests to him (KvsSend, but wrapped in MessageReceived)
-  * - Leader - reserving instances, spawning new PaxosInstance actors, enqueueing received requests (both local and network),
-  *     sending out keepalives
-  *
   * New timers:
-  * - ElectionTimer - used in LeaderAbsent to terminate election
   * - LeaderTimeout - used in LeaderPresent to switch to LeaderAbsent
   * - LeaderKeepalive - used in Leader to broadcast keepalives (if needed)
   *   Although nodees treat any message from leader as keepalive, instead of monitoring what we send to whom, we
@@ -45,8 +41,12 @@ import akka.actor.{Actor, ActorLogging, Props}
   * - handled by special Paxos instance, dedicated to this puprose
   * - whenever someone initiates election Paxos, anyone who has contact with leader could reject proposal
   *   but it's better to wait with response until next timeout comes (and take part if it doesn't)
+  *   if after that we receive keepalive, let's send back HaveLeader (kind of NACK)
   * - we end up in situation of mulitple competing leaders - how to guarantee fast convergence?
-  *   let's base ids on node numbers (counter x node_id) - highest proposal will win, overriding previous ones
+  *   let's base ids on node numbers (counter x node_id) - but this alone doesn't guarantee fast convergence
+  *   we could restrict everyone to be able to start only one round - I'm not sure if this won't lead to deadlock?
+  *   maybe if we don't see voting result in ElectionTimeout, restart it?
+  *
   * - we need to reconfigure slightly
   *   - we don't want to fail after getting single 1b rejection - only after receiving
   *     quorum of them
@@ -106,7 +106,41 @@ object Elector {
 }
 
 class Elector extends Actor with ActorLogging {
+  /**
+    * - waiting for Ready (from communicator),
+    * - enqueuing requests;
+    * - after Ready -> LeaderAbsent, start timer
+    */
   override def receive = {
+
+  }
+
+  /**
+    * - on enter we start Paxos iff we didn't received any proposal earlier
+    * - if we did, we respond to it now that we are leaderless
+    */
+  override def leaderAbsent: Receive = {
+
+  }
+
+  /**
+    * - watching keepalives,
+    * - forwarding all requests to leader (use KvsSend),
+    * - handling timer expiry (-> leaderAbsent)
+    */
+  override def leaderPresent: Receive = {
+
+  }
+
+  /**
+    * - enqueueing received requests (both local and network),
+    * - reserving instances (cyclically),
+    * - keeping track of most recently started instances
+    * - spawning new PaxosInstance actors,
+    * - sending out keepalives on timer
+    * - defeating all attempts to reelect leader
+    */
+  override def leader: Receive = {
 
   }
 }

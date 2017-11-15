@@ -12,13 +12,6 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
 import scala.collection._
 import scala.concurrent.duration.FiniteDuration
 
-/*
-Checklist:
-* duplicate messages
-* retransmission
- */
-
-
 object Proposer {
   def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, loggers: Set[ActorRef] = Set(), disableTimeouts: Boolean = false): Props =
     Props(new Proposer(learner, nodeId, nodeCount, loggers, disableTimeouts))
@@ -58,6 +51,9 @@ object Proposer {
   private val tConf = TimerConf("timeout", 2000, Timeout)
 }
 
+// @todo move messages here
+// @todo add type to SendableMessage, modify all case expressions
+
 object ExecutionTracing {
   object TimeoutType extends Enumeration {
     val p1b, p2b, instance = Value
@@ -82,6 +78,7 @@ object ExecutionTracing {
   case class QueueEmpty() extends LogMessage
 }
 
+// @todo move to separate file
 object Printer {
   def props(): Props = Props(new Printer)
 }
@@ -93,6 +90,7 @@ class Printer extends Actor with ActorLogging {
 }
 
 
+// @todo remove params: learner, add: Elector ref, communicator ref, RoundIdentifier
 class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, val loggers: Set[ActorRef], val disableTimeouts: Boolean)
   extends Actor with ActorLogging with Timers {
 
@@ -101,22 +99,26 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
 
   private val minQuorumSize = nodeCount/2 + 1
 
+  // @todo injected from outside
   private var communicator: ActorRef = _
+  // @todo del
   private var mostRecentlySeenInstanceId: InstanceId = 0
   private val idGen = new IdGenerator(nodeId)
 
   private var paxosState: Option[PaxosInstanceState] = None
   private def state[T] = paxosState.get.asInstanceOf[T]
 
+  // @todo no longer needed we get only one request, after we finish instance we are done
   private val rqQueue = new util.LinkedList[KeyValue]
 
+  // @todo not needed
   override def preStart(): Unit = {
     super.preStart()
 
-    // @todo learner doesn't send anything back, so this might be susceptible to races
     learner ! LearnerSubscribe()
   }
 
+  // @todo simply alias to phase1
   override def receive = {
     case Ready =>
       communicator = sender()
@@ -125,6 +127,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       logg(CommInitialized(communicator))
   }
 
+  // @todo del
   def idle: Receive = {
     case KvsSend(key, value) =>
       rqQueue.add(KeyValue(key, value) )
@@ -136,45 +139,54 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
   }
 
   def phase1: Receive = {
+    // @todo del
     case KvsSend(key, value) =>
       rqQueue.addLast(KeyValue(key, value))
       logg(RequestQueued(KeyValue(key, value), "phase1"))
 
+    // @todo del
     case Start if rqQueue.size() == 0 =>
       logg(QueueEmpty())
       logg(ContextChange("idle"))
       context.become(idle)
 
+    // @todo start without any conditions + self ! Start from constructor
     case Start if rqQueue.size() > 0 =>
-      val v = rqQueue.pop()
+      val v = rqQueue.pop() // d
+      // @todo requestprocessing doesn't hold value, but instance id (no value at this point)
       logg(RequestProcessingStarted(v))
 
+      // @todo not our responsibility really
       val iid = mostRecentlySeenInstanceId + 1
       val rid = idGen.nextId()
       val mo = RoundIdentifier(iid, rid)
 
       communicator ! SendMulticast(Prepare(mo))
+      // @todo preparesent without value
       logg(PrepareSent(mo, v))
       startTimer(p1Conf)
 
       mostRecentlySeenInstanceId += 1
+      // @todo no vlaue in phase 1 message
       paxosState = Some(Phase1(mo, v))
 
+    // @todo there shouldn't be a situation when state is undefined
     case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) if paxosState.isDefined =>
       val Some(PaxosInstanceState(currentMo)) = paxosState
 
+      // @todo check for
       if(messageMo == currentMo) {
         val st = state[Phase1]
 
         m match {
           case RoundTooOld(_, mostRecent) =>
-            // @todo when we gain possibility of ID correction, modify it here
             // someone is already using this instance - we need to switch to new one
             // we didn't sent 2a yet, so we can simply abandon this instance and try for a new one
 
             // just for comletness (in case mechanism changes later)
             st.rejectors += sid
 
+            // @todo report to parent and terminate
             paxosState = None
             stopTimer(p1Conf)
             rqQueue.addFirst(st.ourValue)
