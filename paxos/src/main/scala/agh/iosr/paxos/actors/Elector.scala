@@ -14,7 +14,7 @@ import akka.actor.{Actor, ActorLogging, Props}
   *
   * Our states here:
   * - receive - waiting for Ready, enqueuing requests; after Ready -> LeaderAbsent, start timer
-  * - LeaderAbsent - seding out VoteRequests, watching what others send (unitl ElectionTimer)
+  * - LeaderAbsent - seding out Prepare's, watching what others send (unitl ElectionTimer)
   * - LeaderPresent - watching keepalives, forwarding all requests to him (KvsSend, but wrapped in MessageReceived)
   * - Leader - reserving instances, spawning new PaxosInstance actors, enqueueing received requests (both local and network),
   *     sending out keepalives
@@ -28,53 +28,36 @@ import akka.actor.{Actor, ActorLogging, Props}
   *
   * New messages
   * - KeepAlive()
-  * - LeaderAnnoucement(leaderId) // leaderId not necessarily equals senderId
   * - messages for timers
+  * - add to Paxos messages (or even Sendable message 'type' byte field)
   *
-  * LeaderElection
+  * Using Paxos for leader election (alternative):
+  * - handled by special Paxos instance, dedicated to this puprose
+  * - whenever someone initiates election Paxos, anyone who has contact with leader could reject proposal
+  *   but it's better to wait with response until next timeout comes (and take part if it doesn't)
+  * - we end up in situation of mulitple competing leaders - how to guarantee fast convergence?
+  *   let's base ids on node numbers (counter x node_id) - highest proposal will win, overriding previous ones
+  * - we need to reconfigure slightly
+  *   - we don't want to fail after getting single 1b rejection - only after receiving
+  *     quorum of them
+  * - how to mark messages
+  *   - use dedicated range - it can be exhausted, reduces size of 'working' range
+  *   - use single instance - what if message from previous instance wanders around a little and arrives during next one?
+  *   - special type of messages (byte to distinguish message type?) - seems best
+  * - what if consensus cannot be reached?
+  *
   * - only monitor leader keepalives (and carry out normal operation); any message for a leader is treated as KeepAlive,
   *   but in absence of anything to communicate, leader sends KeepAlive
   * - When timer expires and keepalive was not seen, enter LeaderAbsent state. We also start from LeaderAbsent state
-  *   - if we received before some LeaderAnnoucement with higher ID, we can use him as our current leader
-  * - in LeaderAbsent all operations are suspended, and we broadcast our LeaderAnnoucement
-  * - only store id of highest seen LeaderAnnoucement
-  * - If, after timer expires, no higher ID request has been seen, we become leader
+  *   - if we received before LeaderPaxosPrepare with higher ID, we can use him as our current leader
+  * - in LeaderAbsent all operations are suspended, and we broadcast our Prepare
   * - proposers doesn't cache anything, any inflight requests are ignored (but they may still be voted in if their
   *   instance id's were higher than last one leader seen voted in)
-  * - we don't accept proposals from none-leader nodes, but we continue to respond to coordinators of rounds started
-  *   before leader has been selected
-  * This mechanism seems to differ from what Raft uses, therfore it probably contains a mistake somewhere.
-  *
-  *   Messages:
-  *   - send out LeaderAnnoucements, start election timer
-  *   - received LeaderAnnoucement:
-  *      - higher, no timeout: don't change leaders, but save back info about such an offer, send back NotYet
-  *      - higher, timeout: means he sent out his own already, if better sends back LeaderAccepted
-  *      - lower, no timeout: send back LeaderAnnoucement with ID of your leader
-  *      - lower, timeout: send back LeaderAnnoucement with your own ID
-  *   - no timeout happens in normal operation, timeout happens in LeaderAbsent state
-  *   - what if during normal operation, leader receives higher ID request?
-  *   - when timer expires, if no one has sent higher priority request, become leader
+  * - we don't accept proposals from none-leader nodes (and probably send them some info), but we continue to respond
+  *   to coordinators of rounds started before leader has been selected
   *
   *   New leader initialization:
   *   - after becoming leader, we allocate a new range, higher than anything we've every seen _voted in_
-  *
-  *   In this leader election scheme is possible for nodes think diferent node is the leader. Why?
-  *   - keepalive didn't reach node in time -> we can monitor rtts and adjust time -> different duration of timeout
-  *     across nodes -> any message from node  treated as keepalive?
-  *   It this a problem?
-  *   Kind of - if node thinks someone else is the leader, it'll reject proposals from the real leader.
-  *   But if he's not getting keepalives from node he thinks is the leader, reelection'll be triggered and real
-  *   leader should be selected then.
-  *   Could this other node think himself leader and send keepalives? This would require him to also miss current
-  *   leader's annoucement (which can happen, e.g. in split brain scenario). Who is the actual leader would depend
-  *   on who has the quorum.
-  *   Possible solutions (but I don't think this is really a problem):
-  *   - !build into leader mechanisms which triggers reelection if his proposals are constantly rejected
-  *   - after seeing any message from other, higher ID node (even outside of election round), start treating him as
-  *     leader (and reset leader timer) -> leader instability; but even in this case nodes can disagree (albeit for
-  *     a shorter time)
-  *   - Paxos vote the leader
   *
   * What happens to inflight requests during no-leader period?
   * - no leader -> no proposers to finish rounds he initiated
@@ -88,6 +71,8 @@ import akka.actor.{Actor, ActorLogging, Props}
   * - so client can query cluster asking whether such request was voted in
   * - if cluster keeps track of the clients, this'll be most recent request voted in, so not much searching
   * - but where such data would be stored? on leader? what on leader failure? client's have to resubscribe?
+  *
+  *
   *
   * Rejected ideas:
   * - lets move enqueuing logic to Kvs (he already does it for KvsGet) - so Elector forwards Ready as soon as he
@@ -103,6 +88,7 @@ import akka.actor.{Actor, ActorLogging, Props}
   *   and only remove them when he hears that they were chosen
   *   but this is exactly what client'd do if he cannot read his message from cluster, so it feels better to do it
   *   on best effort basis from the perspective of the cluster
+  * - dedicated leader selection algorithm, described in a3365ebb2734839157c3f55fb7394820cd249560
   */
 
 object Elector {
