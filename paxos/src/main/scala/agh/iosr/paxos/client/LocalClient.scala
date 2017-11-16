@@ -1,23 +1,20 @@
-package agh.iosr.paxos.utils
+package agh.iosr.paxos.client
 
-import agh.iosr.paxos.actors._
-import agh.iosr.paxos.predef._
-import agh.iosr.paxos.utils._
 import agh.iosr.paxos.messages.Messages._
-import akka.actor.{ActorRef, ActorSystem, Props}
-import com.typesafe.config.{Config, ConfigFactory}
+import agh.iosr.paxos.utils._
 import akka.actor._
-import scala.concurrent.duration._
+import com.typesafe.config.{Config, ConfigFactory}
+
 import scala.concurrent.Await
+import scala.concurrent.duration._
 import scala.util.Random
 
 
-object Main {
+object LocalClient {
   def main(args: Array[String]) {
     val sleepTime = 1000 //in milis
     val valuesPerKey = 0.5 // It takes from 0 to 1, if 0 then one key will have many values; if valuesPerKey = 1, then almost every key will have one value
-    println("START")
-    implicit val config: Config = ConfigFactory.load("application.conf")
+    implicit val config: Config = ConfigFactory.load()
     val manager = new ClusterSetupManager()
     val (ipToId, idToIp) = ClusterInfo.nodeMapsFromConf()
     val id = manager.setup(idToIp, ClusterInfo.myIpFromConf())

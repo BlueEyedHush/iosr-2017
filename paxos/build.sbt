@@ -11,7 +11,7 @@ lazy val root = (project in file(".")).
       version      := "0.1.0"
     )),
     name := "paxos-iosr",
-    mainClass in assembly := Some("agh.iosr.paxos.client.AwsMain"),
+    mainClass in assembly := Some("agh.iosr.paxos.client.LocalClient"),
     assemblyJarName in assembly := "paxos-iosr.jar",
 
     libraryDependencies += "com.typesafe.akka" %% "akka-actor" % akkaVersion,

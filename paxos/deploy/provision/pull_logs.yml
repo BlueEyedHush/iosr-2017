@@ -1,0 +1,15 @@
+---
+
+- hosts: tag_Name_paxos_server
+  connection: local
+  vars_files:
+  - global_vars.yml
+  tasks:
+  - file:
+      path: "{{ log_dir }}"
+      state: directory
+  - fetch:
+      src: "/home/ubuntu/logs/*.log"
+      dest: "{{ log_dir }}"
+
+# @todo replace AwsClient with real one from main
