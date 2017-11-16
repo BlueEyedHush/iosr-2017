@@ -34,6 +34,7 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef) extends Actor with A
   // @todo must be ready to handle signals send from paxos instances (including retry)
   // @todo sent start to actor
   // @todo proposers who never received value are going to hang...
+  // @todo keep tracck of what value send to whom
 
   def follower: Receive = {
     case BecomingLeader =>

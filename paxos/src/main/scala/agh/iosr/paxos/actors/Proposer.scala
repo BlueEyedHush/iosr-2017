@@ -106,6 +106,8 @@ class Proposer(val dispatcher: ActorRef,
 
   private def initiateVoting(v: KeyValue) = {
     assert(ourValue.isDefined)
+    assert(votedValue.isEmpty)
+    votedValue = Some(v)
 
     communicator ! SendMulticast(AcceptRequest(currentRoundId, v))
     logg(InitiatingVoting(currentRoundId, v, ourValue.get))
@@ -208,61 +210,46 @@ class Proposer(val dispatcher: ActorRef,
 
   def phase2: Receive = {
     // we wait for results of round we initiated and we have to make a decision - do we restart or value was voted for
-    case KvsSend(key, value) =>
-      rqQueue.addLast(KeyValue(key, value))
-      logg(RequestQueued(KeyValue(key, value), "phase2"))
-
     case ValueLearned(iid, k, v) =>
+      assert(ourValue.isDefined)
+      val ourV = ourValue.get
+
       val votedValue = KeyValue(k,v)
-      val st = state[Phase2]
-      if (st.mo.instanceId == iid) {
         // OK, results of our round are published
-        if (votedValue == st.ourValue) {
-          logg(InstanceSuccessful(iid))
-          // mission accomplished, we can go back to idle
-          paxosState = None
-          context.become(phase1)
-          logg(ContextChange("phase1"))
-          self ! Start
-        } else {
-          logg(VotingUnsuccessful(iid, votedValue))
-          /*
-          we have to try once again
-          but we might have a problem - if we were trying to complete prevously initiated round, what
-          value should we try to propose in a new round? the one we were trying to push or the one we originally
-          wanted?
+      if (votedValue == ourV) {
+        logg(InstanceSuccessful(iid))
+        dispatcher ! OurValueChosen(currentRoundId.instanceId, ourV)
+        self ! PoisonPill
+      } else {
+        logg(VotingUnsuccessful(iid, votedValue))
+        /*
+        we have to try once again
+        but we might have a problem - if we were trying to complete prevously initiated round, what
+        value should we try to propose in a new round? the one we were trying to push or the one we originally
+        wanted?
 
-          currently, the old one is simply _dropped_
-           */
+        currently, the old one is simply _dropped_
+         */
 
-          // @todo remove all queues, simply inform actor
-          paxosState = None
-          rqQueue.addFirst(st.ourValue)
-
-          // @todo this looks fishy, probably'll result in some pattern matching errors in ReceiveMessage
-          context.become(phase1)
-          logg(ContextChange("phase1"))
-          self ! Start
-        }
-
-        stopTimer(p2Conf)
-        stopTimer(tConf)
+        dispatcher ! OverrodeInP2(currentRoundId.instanceId)
+        self ! PoisonPill
       }
 
-    case ReceivedMessage(HigherProposalReceived(mmo, higherId), sid) if mmo == paxosState.get.mo =>
-      // higher proposal appeared while our has been voted on -> but we cannot back off now
-      // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
-      // we might overwrite some values
-      // all in all, we cannot do much here
-      // @todo inform parent
-      state[Phase2].nacks += sid
-      logg(RoundOverridden(mmo, higherId, "2b"))
-      ()
+      stopTimer(p2Conf)
+      stopTimer(tConf)
 
+    case ReceivedMessage(HigherProposalReceived(mmo, higherId), sid) =>
+      // @todo handle it better, wait initially for more nodes?
+      nacks += sid
+      logg(RoundOverridden(mmo, higherId, "2b"))
+      dispatcher ! OverrodeInP2(currentRoundId.instanceId)
+      self ! PoisonPill
+
+      // @todo actuall set votedValue!
     case P2Tick =>
-      val cst = state[Phase2]
-      val msg = AcceptRequest(cst.mo, cst.votedValue)
-      (0 until nodeCount).filterNot(id => cst.nacks.contains(id) || id == nodeId).foreach(id => {
+      assert(votedValue.isDefined)
+      val msg = AcceptRequest(currentRoundId, votedValue.get)
+      (0 until nodeCount).filterNot(id => nacks.contains(id) || id == nodeId).foreach(id => {
         communicator ! SendUnicast(msg, id)
       })
       logg(TimeoutHit(TimeoutType.p2b, "retransmitting 2a message"))
@@ -271,15 +258,9 @@ class Proposer(val dispatcher: ActorRef,
       /* timeout, we give up */
       logg(TimeoutHit(TimeoutType.instance, "abandoning"))
 
-      paxosState = None
-      context.become(phase1)
-      logg(ContextChange("phase1"))
-      self ! Start
-      // @todo: good place to inform client we are free
-
+      dispatcher ! InstanceTimeout(currentRoundId.instanceId)
+      self ! PoisonPill
   }
-
-  // @todo handling of errant messages in all states
 
   // @todo: extract and test separatelly
   private def pickValueToVote(pm: PromiseMap, currentRid: RoundId): Option[KeyValue] = {
