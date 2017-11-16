@@ -7,7 +7,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 object Dispatcher {
   val batchSize = 10
 
-  def props(comm: ActorRef): Props = Props(new Dispatcher(comm))
+  def props(comm: ActorRef, learner: ActorRef): Props = Props(new Dispatcher(comm, learner))
 }
 
 /**
@@ -28,9 +28,11 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef) extends Actor with A
   private var offsetWithinBatch: InstanceId = NULL_INSTANCE_ID
   private var proposers: Array[ActorRef] = _
 
-  override def receive = notLeader
+  override def receive = follower
 
-  def notLeader: Receive = {
+  // @todo MessageReceived message passthrough (comining functions?) - not done in elector
+
+  def follower: Receive = {
     case BecomingLeader =>
       allocateInstances()
       context.become(leader)
@@ -41,7 +43,7 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef) extends Actor with A
 
   def leader: Receive = {
     case LoosingLeader =>
-      context.become(notLeader)
+      context.become(follower)
 
     case m @ KvsSend(_, _) =>
       // @todo request new batch if needed, find free instance and send message to it

@@ -67,7 +67,7 @@ object ExecutionTracing {
   }
 
 
-  trait LogMessage
+
   case class CommInitialized(comm: ActorRef) extends LogMessage
   case class ContextChange(to: String) extends LogMessage
   case class NewPromise(sender: NodeId, cm: Promise) extends LogMessage
@@ -83,20 +83,6 @@ object ExecutionTracing {
   case class VotingUnsuccessful(instance: InstanceId, value: KeyValue) extends LogMessage
   case class TimeoutHit(which: TimeoutType.Value, comment: String = "") extends LogMessage
   case class QueueEmpty() extends LogMessage
-}
-
-// @todo move to separate file
-object Printer {
-  def props(nodeId: NodeId): Props = Props(new Printer(nodeId))
-}
-
-class Printer(val nodeId: NodeId) extends Actor with ActorLogging {
-  private implicit val implId: NodeId = nodeId
-  private implicit val implLog: LoggingAdapter = log
-
-  override def receive: Receive = {
-    case m => FileLog.info(m)
-  }
 }
 
 
