@@ -1,6 +1,13 @@
 package agh.iosr.paxos.actors
+import java.util
 
-import akka.actor.{Actor, ActorLogging, Props}
+import agh.iosr.paxos.messages.Messages._
+import agh.iosr.paxos.predef._
+import agh.iosr.paxos.utils.TimersManager
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
+import akka.event.LoggingReceive
+
+import scala.collection.mutable
 
 /**
   * ~~~ I'm not sure if mechanism described below is correct, should be checked against some authoritative source ~~~
@@ -102,45 +109,184 @@ import akka.actor.{Actor, ActorLogging, Props}
   */
 
 object Elector {
-  def props(): Props = Props(new Elector())
+  def props(dispatcher: ActorRef, nodeId: NodeId, nodeCount: NodeId, disableTimeouts: Boolean = false): Props =
+    Props(new Elector(dispatcher, nodeId, nodeCount, disableTimeouts))
+
+  case object BecomingLeader
+  case object LoosingLeader
+  case class LeaderChanged(leaderId: NodeId)
+
+  case object KeepAliveTick
+  case object CandidateTimeout
+  case object FollowerTimeout
+
+  private val keepAliveConf = TimerConf("keepAlive", 200, KeepAliveTick)
+  private val candidateTimeoutConf = RandomTimerConf("candidateTimeout", 300, 600, CandidateTimeout)
+  private val followerTimeoutConf = RandomTimerConf("followerTimeout", 500, 800, FollowerTimeout)
 }
 
-class Elector extends Actor with ActorLogging {
-  /**
-    * - waiting for Ready (from communicator),
-    * - enqueuing requests;
-    * - after Ready -> LeaderAbsent, start timer
-    */
-  override def receive = {
 
+class Elector(val dispatcher: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, val disableTimeouts: Boolean) extends Actor with ActorLogging with Timers{
+
+  import Elector._
+
+  private val timerManager = TimersManager.getTimersManager(timers, disableTimeouts)
+  private val requestQueue: util.List[KvsSend] = new util.LinkedList[KvsSend]
+  private var communicator: ActorRef = _
+  private var currentLeader: NodeId = _
+
+
+  /**
+    * + waiting for Ready (from communicator),
+    * + enqueuing requests;
+    * + after Ready -> follower
+    */
+  override def receive: Receive = {
+    case Ready =>
+      communicator = sender
+      context.become(follower(0))
+
+    case ReceivedMessage(KvsSend(key, value), _) =>
+      requestQueue.add(KvsSend(key, value))
   }
 
-  /**
-    * - on enter we start Paxos iff we didn't received any proposal earlier
-    * - if we did, we respond to it now that we are leaderless
-    */
-  override def leaderAbsent: Receive = {
 
+  /**
+    * + watching keepAlive,
+    * + forwarding all requests to leader (use KvsSend),
+    * + voting for candidates for a leader (max 1 vote per term, first candidate gains the vote)
+    * + handling timer expiry (-> candidate)
+    */
+  def follower(currentTerm: InstanceId, _voted: Boolean = false): Receive = {
+    timerManager.restartTimerOnce(followerTimeoutConf)
+    var voted = _voted
+
+    requestQueue.forEach(rq => communicator ! SendUnicast(rq, currentLeader))
+    requestQueue.clear()
+
+    LoggingReceive {
+      case ReceivedMessage(KvsSend(key, value), _) =>
+        communicator ! SendUnicast(KvsSend(key, value), currentLeader)
+
+      case msg: KvsSend =>
+        communicator ! SendUnicast(msg, currentLeader)
+
+      case ReceivedMessage(KeepAlive(instanceId), remoteId) if instanceId == currentTerm =>
+        if (currentLeader != remoteId) {
+          currentLeader = remoteId
+          dispatcher ! LeaderChanged(currentLeader)
+        }
+        timerManager.restartTimerOnce(followerTimeoutConf)
+
+      case ReceivedMessage(KeepAlive(instanceId), remoteId) if instanceId > currentTerm =>
+        if (currentLeader != remoteId) {
+          currentLeader = remoteId
+          dispatcher ! LeaderChanged(currentLeader)
+        }
+        context.become(follower(instanceId))
+
+      case ReceivedMessage(VoteForMe(instanceId), remoteId) if instanceId == currentTerm && !voted =>
+        communicator ! SendUnicast(Vote(instanceId), remoteId)
+        voted = true
+        timerManager.restartTimerOnce(followerTimeoutConf)
+
+      case ReceivedMessage(VoteForMe(instanceId), remoteId) if instanceId > currentTerm =>
+        communicator ! SendUnicast(Vote(instanceId), remoteId)
+        context.become(follower(instanceId, _voted = true))
+
+      case FollowerTimeout =>
+        context.become(candidate(currentTerm + 1))
+    }
   }
 
-  /**
-    * - watching keepalives,
-    * - forwarding all requests to leader (use KvsSend),
-    * - handling timer expiry (-> leaderAbsent)
-    */
-  override def leaderPresent: Receive = {
 
+  /**
+    * + attempting to become a leader,
+    * + sending request for votes - VoteForMe,
+    * + when received majority of votes in currentTerm -> becoming leader,
+    * + upon receiving message for higher term -> fallback to follower,
+    * + meanwhile enqueuing requests,
+    * + handling timer expiry (-> candidate in next term)
+    */
+  def candidate(currentTerm: InstanceId): Receive = {
+    timerManager.restartTimerOnce(candidateTimeoutConf)
+    val votesGained: mutable.Set[NodeId] = mutable.Set.empty
+    communicator ! SendMulticast(VoteForMe(currentTerm))
+    LoggingReceive {
+      case ReceivedMessage(KvsSend(key, value), _) =>
+        requestQueue.add(KvsSend(key, value))
+
+      case ReceivedMessage(KeepAlive(instanceId), remoteId) if instanceId >= currentTerm =>
+        currentLeader = remoteId
+        dispatcher ! LeaderChanged(currentLeader)
+        timerManager.stopTimer(candidateTimeoutConf)
+        context.become(follower(instanceId))
+
+      case ReceivedMessage(VoteForMe(instanceId), remoteId) if instanceId > currentTerm =>
+        communicator ! SendUnicast(Vote(instanceId), remoteId)
+        timerManager.stopTimer(candidateTimeoutConf)
+        context.become(follower(instanceId, _voted = true))
+
+      case ReceivedMessage(Vote(instanceId), remoteId) if instanceId == currentTerm =>
+        votesGained += remoteId
+        if (votesGained.size > nodeCount / 2) {
+          currentLeader = nodeId
+          timerManager.stopTimer(candidateTimeoutConf)
+          context.become(leader(instanceId))
+        }
+
+      case CandidateTimeout =>
+        context.become(candidate(currentTerm + 1))
+    }
   }
 
-  /**
-    * - enqueueing received requests (both local and network),
-    * - reserving instances (cyclically),
-    * - keeping track of most recently started instances
-    * - spawning new PaxosInstance actors,
-    * - sending out keepalives on timer
-    * - defeating all attempts to reelect leader
-    */
-  override def leader: Receive = {
 
+  /**
+    * - enqueueing received requests (both local and network),  // Delegating to dispatcher
+    * - reserving instances (cyclically), // Delegating to dispatcher
+    * - keeping track of most recently started instances // Delegating to dispatcher
+    * - spawning new PaxosInstance actors, // Delegating to dispatcher
+    * + sending out keepalives on timer
+    * + resigning from leader position upon message from higher term
+    */
+  def leader(currentTerm: InstanceId): Receive = {
+    timerManager.restartTimerOnce(keepAliveConf)
+
+    requestQueue.forEach(rq => dispatcher ! rq)
+    requestQueue.clear()
+    dispatcher ! BecomingLeader
+
+    LoggingReceive {
+      case ReceivedMessage(KvsSend(key, value), _) =>
+        dispatcher ! KvsSend(key, value)
+
+      case msg: KvsSend =>
+        dispatcher ! msg
+
+      case KeepAliveTick =>
+        communicator ! SendMulticast(KeepAlive(currentTerm))
+        timerManager.restartTimerOnce(keepAliveConf)
+
+      case ReceivedMessage(KeepAlive(instanceId), _) if instanceId <= currentTerm =>
+        communicator ! SendMulticast(KeepAlive(currentTerm))
+        timerManager.restartTimerOnce(keepAliveConf)
+
+      case ReceivedMessage(VoteForMe(instanceId), _) if instanceId <= currentTerm =>
+        communicator ! SendMulticast(KeepAlive(currentTerm))
+        timerManager.restartTimerOnce(keepAliveConf)
+
+      case ReceivedMessage(KeepAlive(instanceId), remoteId) if instanceId > currentTerm =>
+        currentLeader = remoteId
+        dispatcher ! LoosingLeader
+        dispatcher ! LeaderChanged(currentLeader)
+        timerManager.stopTimer(keepAliveConf)
+        context.become(follower(instanceId))
+
+      case ReceivedMessage(VoteForMe(instanceId), remoteId) if instanceId > currentTerm =>
+        communicator ! SendUnicast(Vote(instanceId), remoteId)
+        dispatcher ! LoosingLeader
+        timerManager.stopTimer(keepAliveConf)
+        context.become(follower(instanceId, _voted = true))
+    }
   }
 }

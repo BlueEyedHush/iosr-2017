@@ -46,7 +46,6 @@ object Proposer {
   case object P2Tick
   case object Timeout
 
-  case class TimerConf(key: String, msInterval: Int, msg: Any)
   private val p1Conf = TimerConf("p1a", 200, P1Tick)
   private val p2Conf = TimerConf("p2a", 200, P2Tick)
   private val tConf = TimerConf("timeout", 2000, Timeout)
@@ -128,7 +127,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
   override def preStart(): Unit = {
     super.preStart()
 
-    learner ! LearnerSubscribe()
+    learner ! LearnerSubscribe
   }
 
   // @todo simply alias to phase1

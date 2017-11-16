@@ -30,7 +30,7 @@ class Learner() extends Actor with ActorLogging {
   }
 
   def ready: Receive = {
-    case LearnerSubscribe() =>
+    case LearnerSubscribe =>
       subscribers += sender
       log.info("Learner:" + self + " @ Receive")
 
