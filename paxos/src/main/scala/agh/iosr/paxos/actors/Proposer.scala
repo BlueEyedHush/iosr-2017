@@ -14,8 +14,14 @@ import scala.collection._
 import scala.concurrent.duration.FiniteDuration
 
 object Proposer {
-  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, loggers: Set[ActorRef] = Set(), disableTimeouts: Boolean = false): Props =
-    Props(new Proposer(learner, nodeId, nodeCount, loggers, disableTimeouts))
+  def props(elector: ActorRef,
+            communicator: ActorRef,
+            ourInstanceId: InstanceId,
+            nodeId: NodeId,
+            nodeCount: NodeId,
+            loggers: Set[ActorRef] = Set(),
+            disableTimeouts: Boolean = false): Props =
+    Props(new Proposer(elector, communicator, ourInstanceId, nodeId, nodeCount, loggers, disableTimeouts))
 
   case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
 
@@ -91,7 +97,13 @@ object ExecutionTracing {
 
 
 // @todo remove params: learner, add: Elector ref, communicator ref, RoundIdentifier
-class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, val loggers: Set[ActorRef], val disableTimeouts: Boolean)
+class Proposer(val elector: ActorRef,
+               val communicator: ActorRef,
+               val ourInstanceId: InstanceId,
+               val nodeId: NodeId,
+               val nodeCount: NodeId,
+               val loggers: Set[ActorRef],
+               val disableTimeouts: Boolean)
   extends Actor with ActorLogging with Timers {
 
   import ExecutionTracing._
