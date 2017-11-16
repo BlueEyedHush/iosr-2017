@@ -1,6 +1,6 @@
 package agh.iosr.paxos.actors
 
-import agh.iosr.paxos.actors.Proposer.{InstanceTimeout, OverrodeInP1, OverrodeInP2, Result}
+import agh.iosr.paxos.actors.Proposer._
 import agh.iosr.paxos.messages.Messages.{ConsensusMessage, KvsSend, ValueLearned}
 import agh.iosr.paxos.predef._
 import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
@@ -10,7 +10,8 @@ import scala.collection._
 object Dispatcher {
   val batchSize = 10
 
-  def props(comm: ActorRef, learner: ActorRef): Props = Props(new Dispatcher(comm, learner))
+  def props(comm: ActorRef, learner: ActorRef, nodeId: NodeId, nodeCount: NodeId): Props =
+    Props(new Dispatcher(comm, learner, nodeId, nodeCount))
 }
 
 /**
@@ -23,7 +24,9 @@ object Dispatcher {
   * We don't restart instances that timed out
   *
   */
-class Dispatcher(val comm: ActorRef, val learner: ActorRef) extends Actor with ActorLogging {
+class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
+  extends Actor with ActorLogging {
+
   import Dispatcher._
   import Elector._
 
@@ -32,7 +35,7 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef) extends Actor with A
   private var currentBatchOffset: InstanceId = NULL_INSTANCE_ID
   private var nextFreeInPool: InstanceId = NULL_INSTANCE_ID
   private val instanceMap = mutable.Map[InstanceId, (KeyValue, ActorRef)]()
-  private val freePool: Array[ActorRef] = _
+  private var freePool: Array[ActorRef] = _
 
   override def receive = follower
 
@@ -81,7 +84,6 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef) extends Actor with A
       instanceMap.remove(m.iid)
   }
 
-  // @todo handle incomin messages from Proposer
   val followerHandler: Receive = {
     case BecomingLeader =>
       allocateInstances()
@@ -119,6 +121,21 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef) extends Actor with A
 
 
   private def allocateInstances() = {
-    // @todo
+    /* first clean up instances left over from previous sessions */
+    (nextFreeInPool until batchSize).foreach(id => {
+      val (_, instance) = freePool(id)
+      instance ! PoisonPill
+    })
+
+    /* update counters for new batch */
+    nextFreeInPool = 0
+    currentBatchOffset += batchSize
+
+    /* allocate new instances */
+    freePool = (0 until batchSize).map(id => {
+      val r = context.system.actorOf(Proposer.props(self, comm, currentBatchOffset + id, nodeId, nodeCount))
+      r ! Start
+      r
+    }).toArray
   }
 }
