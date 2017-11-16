@@ -66,23 +66,27 @@ object ExecutionTracing {
     val p1b, p2b, instance = Value
   }
 
+  case class RequestProcessingStarted(req: KeyValue) extends LogMessage
+  case class QueueEmpty() extends LogMessage
 
-
-  case class CommInitialized(comm: ActorRef) extends LogMessage
   case class ContextChange(to: String) extends LogMessage
+  case class IgnoringRound(instance: InstanceId, ignored: RoundId, current: RoundId, m: SendableMessage) extends LogMessage
+
+  /* phase 1 */
+  case class PrepareSent(ri: RoundIdentifier, ourV: KeyValue) extends LogMessage
+
   case class NewPromise(sender: NodeId, cm: Promise) extends LogMessage
   case class PromiseDuplicate(sender: NodeId, cm: Promise) extends LogMessage
-  case class RequestProcessingStarted(req: KeyValue) extends LogMessage
   case class RequestQueued(req: KeyValue, phase: String = "") extends LogMessage
-  case class PrepareSent(ri: RoundIdentifier, ourV: KeyValue) extends LogMessage
-  case class RoundOverridden(ri: RoundIdentifier, higherId: RoundId, phase: String) extends LogMessage
+
+  /* phase 2 */
   case class InitiatingVoting(ri: RoundIdentifier, proposal: KeyValue, ourV: KeyValue) extends LogMessage
-  case class IgnoringInstance(ignored: InstanceId, current: InstanceId, m: SendableMessage) extends LogMessage
-  case class IgnoringRound(instance: InstanceId, ignored: RoundId, current: RoundId, m: SendableMessage) extends LogMessage
   case class InstanceSuccessful(instance: InstanceId) extends LogMessage
   case class VotingUnsuccessful(instance: InstanceId, value: KeyValue) extends LogMessage
   case class TimeoutHit(which: TimeoutType.Value, comment: String = "") extends LogMessage
-  case class QueueEmpty() extends LogMessage
+
+  /* p1 and p2 nack */
+  case class RoundOverridden(ri: RoundIdentifier, higherId: RoundId, phase: String) extends LogMessage
 }
 
 
