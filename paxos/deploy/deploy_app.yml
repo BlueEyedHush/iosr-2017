@@ -18,3 +18,5 @@
   - file:
       path: "{{ paxos_path }}/logs"
       state: directory
+  - command: "aws s3 cp s3://iosr/travis-builds/paxos-iosr.jar /home/ubuntu"
+  - command: "./aws-run.sh"

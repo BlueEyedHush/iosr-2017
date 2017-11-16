@@ -5,7 +5,6 @@ before_deploy:
   sbt "set test in assembly := {}" assembly;
   mkdir deploy-temp;
   cp target/scala-2.12/paxos-iosr.jar deploy-temp/;
-  popd;
 
 deploy:
   provider: s3
