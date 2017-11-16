@@ -1,13 +1,12 @@
 package agh.iosr.paxos.actors
 
-import java.util
 import java.util.concurrent.TimeUnit
 
 import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
 import agh.iosr.paxos.utils._
-import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
+import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props, Timers}
 import akka.event.LoggingAdapter
 
 import scala.collection._
@@ -25,26 +24,7 @@ object Proposer {
 
   case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
 
-  sealed trait PaxosInstanceState {
-    def mo: RoundIdentifier
-  }
-
-  object PaxosInstanceState {
-    def unapply(pis: PaxosInstanceState): Option[RoundIdentifier] = Some(pis.mo)
-  }
-
   type PromiseMap = mutable.Map[NodeId, RPromise]
-
-  case class Phase1(mo: RoundIdentifier,
-                    ourValue: KeyValue,
-                    rejectors: mutable.Set[NodeId] = mutable.Set(),
-                    promises: PromiseMap = mutable.Map[NodeId, RPromise]()) extends PaxosInstanceState
-
-  case class Phase2(mo: RoundIdentifier,
-                    votedValue: KeyValue,
-                    ourValue: KeyValue,
-                    nacks: mutable.Set[NodeId] = mutable.Set()) extends PaxosInstanceState
-
 
   case object Start
 
@@ -58,8 +38,8 @@ object Proposer {
 
   trait Result
   case class OurValueChosen(iid: InstanceId, v: KeyValue) extends Result
-  case class OverrodeInP1(iid: InstanceId, overridingRoundId: RoundId) extends Result
-  case class OverrodeInP2(iid: InstanceId, overridingRoundId: RoundId) extends Result
+  case class OverrodeInP1(iid: InstanceId) extends Result
+  case class OverrodeInP2(iid: InstanceId) extends Result
   case class InstanceTimeout(iid: InstanceId) extends Result
 }
 
@@ -67,19 +47,21 @@ object Proposer {
 // @todo add type to SendableMessage, modify all case expressions
 // @todo on timeout actor should terminate
 // @todo right after initialization it should initiate phase 1
+// @todo rewrite FileLog (but also need to modify parser)
+// @todo maybe eliminate case-class based states altogether?
 object ExecutionTracing {
   object TimeoutType extends Enumeration {
     val p1b, p2b, instance = Value
   }
 
-  case class RequestProcessingStarted(req: KeyValue) extends LogMessage
+  case class RequestProcessingStarted(rid: RoundIdentifier) extends LogMessage
   case class QueueEmpty() extends LogMessage
 
   case class ContextChange(to: String) extends LogMessage
   case class IgnoringRound(instance: InstanceId, ignored: RoundId, current: RoundId, m: SendableMessage) extends LogMessage
 
   /* phase 1 */
-  case class PrepareSent(ri: RoundIdentifier, ourV: KeyValue) extends LogMessage
+  case class PrepareSent(ri: RoundIdentifier) extends LogMessage
 
   case class NewPromise(sender: NodeId, cm: Promise) extends LogMessage
   case class PromiseDuplicate(sender: NodeId, cm: Promise) extends LogMessage
@@ -96,8 +78,7 @@ object ExecutionTracing {
 }
 
 
-// @todo remove params: learner, add: Elector ref, communicator ref, RoundIdentifier
-class Proposer(val elector: ActorRef,
+class Proposer(val dispatcher: ActorRef,
                val communicator: ActorRef,
                val ourInstanceId: InstanceId,
                val nodeId: NodeId,
@@ -114,170 +95,115 @@ class Proposer(val elector: ActorRef,
 
   private val minQuorumSize = nodeCount/2 + 1
 
-  // @todo injected from outside
-  private var communicator: ActorRef = _
-  // @todo del
-  private var mostRecentlySeenInstanceId: InstanceId = 0
   private val idGen = new IdGenerator(nodeId)
 
-  private var paxosState: Option[PaxosInstanceState] = None
-  private def state[T] = paxosState.get.asInstanceOf[T]
+  private var currentRoundId: RoundIdentifier = _
+  private var ourValue: Option[KeyValue] = None
+  private var votedValue: Option[KeyValue] = None
+  private var rejectors: mutable.Set[NodeId] = mutable.Set()
+  private var promises: PromiseMap = mutable.Map[NodeId, RPromise]()
+  private var nacks: mutable.Set[NodeId] = mutable.Set()
 
-  // @todo no longer needed we get only one request, after we finish instance we are done
-  private val rqQueue = new util.LinkedList[KeyValue]
+  private def initiateVoting(v: KeyValue) = {
+    assert(ourValue.isDefined)
 
-  // @todo not needed
-  override def preStart(): Unit = {
-    super.preStart()
+    communicator ! SendMulticast(AcceptRequest(currentRoundId, v))
+    logg(InitiatingVoting(currentRoundId, v, ourValue.get))
 
-    learner ! LearnerSubscribe
+    context.become(phase2)
+    logg(ContextChange("phase2"))
+    startTimer(p2Conf)
+    startTimer(tConf)
   }
 
-  // @todo simply alias to phase1
-  override def receive = {
-    case Ready =>
-      logg(ContextChange("ready"))
-
-      communicator = sender()
-      logg(CommInitialized(communicator))
-
-      // @todo attach logger in local test scenario
-      if (rqQueue.size() > 0) {
-        /* process messages that were enqueued while we were waiting for UDP */
-        logg(ContextChange("phase1"))
-        context.become(phase1)
-        self ! Start
-      } else {
-        /* otherwise just go to idle */
-        logg(ContextChange("idle"))
-        context.become(idle)
-      }
-
-
-    case KvsSend(key, value) =>
-      val kv = KeyValue(key, value)
-      rqQueue.addLast(kv)
-      logg(RequestQueued(kv))
-  }
-
-  // @todo del
-  def idle: Receive = {
-    case KvsSend(key, value) =>
-      rqQueue.add(KeyValue(key, value))
-      context.become(phase1)
-      self ! Start
-
-      logg(RequestQueued(KeyValue(key, value), "idle"))
-      logg(ContextChange("phase1"))
-  }
+  override def receive = phase1
 
   def phase1: Receive = {
-    // @todo del
     case KvsSend(key, value) =>
-      rqQueue.addLast(KeyValue(key, value))
-      logg(RequestQueued(KeyValue(key, value), "phase1"))
+      assert(ourValue.isEmpty)
+      ourValue = Some(KeyValue(key, value))
+      logg(RequestQueued(ourValue.get, "phase1"))
 
-    // @todo del
-    case Start if rqQueue.size() == 0 =>
-      logg(QueueEmpty())
-      logg(ContextChange("idle"))
-      context.become(idle)
-
-    // @todo start without any conditions + self ! Start from constructor
-    case Start if rqQueue.size() > 0 =>
-      val v = rqQueue.pop() // d
-      // @todo requestprocessing doesn't hold value, but instance id (no value at this point)
-      logg(RequestProcessingStarted(v))
-
-      // @todo not our responsibility really
-      val iid = mostRecentlySeenInstanceId + 1
+    case Start =>
       val rid = idGen.nextId()
-      val mo = RoundIdentifier(iid, rid)
+      currentRoundId = RoundIdentifier(ourInstanceId, rid)
 
-      communicator ! SendMulticast(Prepare(mo))
-      // @todo preparesent without value
-      logg(PrepareSent(mo, v))
+      logg(RequestProcessingStarted(currentRoundId))
+
+      communicator ! SendMulticast(Prepare(currentRoundId))
+      logg(PrepareSent(currentRoundId))
       startTimer(p1Conf)
 
-      mostRecentlySeenInstanceId += 1
-      // @todo no vlaue in phase 1 message
-      paxosState = Some(Phase1(mo, v))
+    case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) =>
 
-    // @todo there shouldn't be a situation when state is undefined
-    case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) if paxosState.isDefined =>
-      val Some(PaxosInstanceState(currentMo)) = paxosState
-
-      // @todo check for roudn only, not instance
-      if(messageMo == currentMo) {
-        val st = state[Phase1]
-
+      if (messageMo.roundId != currentRoundId.roundId) {
+        logg(IgnoringRound(messageMo.instanceId, messageMo.roundId, currentRoundId.roundId, m))
+      } else {
         m match {
           case RoundTooOld(_, mostRecent) =>
             // someone is already using this instance - we need to switch to new one
             // we didn't sent 2a yet, so we can simply abandon this instance and try for a new one
 
             // just for comletness (in case mechanism changes later)
-            st.rejectors += sid
-
-            // @todo report to parent and terminate
-            paxosState = None
+            rejectors += sid
             stopTimer(p1Conf)
-            rqQueue.addFirst(st.ourValue)
-            logg(RoundOverridden(currentMo, mostRecent, "1b"))
-            self ! Start
+            logg(RoundOverridden(currentRoundId, mostRecent, "1b"))
+            
+            dispatcher ! OverrodeInP1(currentRoundId.instanceId)
+            self ! PoisonPill
 
           case pm @ Promise(_, vr, ovv) =>
-            if (st.promises.contains(sid)) {
+            if (promises.contains(sid)) {
               logg(PromiseDuplicate(sid, pm))
             } else {
-              st.promises += (sid -> RPromise(vr, ovv))
+              promises += (sid -> RPromise(vr, ovv))
               logg(NewPromise(sid, pm))
 
-              if (st.promises.size >= minQuorumSize) {
+              if (promises.size >= minQuorumSize) {
                 stopTimer(p1Conf)
 
-                val v = pickValueToVote(st.promises, currentMo.roundId).getOrElse(st.ourValue)
-
-                communicator ! SendMulticast(AcceptRequest(currentMo, v))
-                logg(InitiatingVoting(currentMo, v, st.ourValue))
-
-                // enter Phase 2
-                paxosState = Some(Phase2(currentMo, v, st.ourValue))
-                context.become(phase2)
-                logg(ContextChange("phase2"))
-                startTimer(p2Conf)
-                startTimer(tConf)
+                pickValueToVote(promises, currentRoundId.roundId) match {
+                  case Some(previousV) =>
+                    /* we have to handle previous value, we must inform dispatcher */
+                    dispatcher ! OverrodeInP1(currentRoundId.instanceId)
+                    initiateVoting(previousV)
+                  case None =>
+                    /* we are free to select any value we want */
+                    ourValue match {
+                      case Some(ourV) =>
+                        /* start voting and go to phase 2 */
+                        initiateVoting(ourV)
+                      case None =>
+                        /* go to waiting state */
+                        context.become(waitingForValue)
+                        logg(ContextChange("waitingForValue"))
+                    }
+                }
               }
             }
-
-
-          case _ =>
-        }
-
-      } else {
-        // @todo most external logging not needed
-        if (messageMo.instanceId != currentMo.instanceId) {
-          logg(IgnoringInstance(messageMo.instanceId, currentMo.instanceId, m))
-        } else {
-          if (messageMo.roundId > currentMo.roundId) {
-            logg(IgnoringRound(messageMo.instanceId, messageMo.roundId, currentMo.roundId, m))
-          } else if (messageMo.roundId < currentMo.roundId) {
-            logg(IgnoringRound(messageMo.instanceId, messageMo.roundId, currentMo.roundId, m))
           }
-        }
-    }
+      }
+
 
     case P1Tick =>
-      val st = state[Phase1]
-      val alive = st.promises.keySet ++ st.rejectors
+      val alive = promises.keySet ++ rejectors
 
       (0 until nodeCount).filterNot(id => alive.contains(id) || id == nodeId).foreach(id => {
-        val msg = Prepare(st.mo)
+        val msg = Prepare(currentRoundId)
         communicator ! SendUnicast(msg, id)
       })
 
       logg(TimeoutHit(TimeoutType.p1b, s"retransmitting to ${nodeCount - alive.size} nodes"))
 
+  }
+
+  def waitingForValue: Receive = {
+    case KvsSend(key, value) =>
+      assert(ourValue.isEmpty)
+      ourValue = Some(KeyValue(key, value))
+      logg(RequestQueued(ourValue.get, "waitingForValue"))
+
+      initiateVoting(ourValue.get)
   }
 
   def phase2: Receive = {

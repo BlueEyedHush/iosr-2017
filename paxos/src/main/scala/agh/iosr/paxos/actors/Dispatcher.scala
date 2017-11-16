@@ -31,6 +31,9 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef) extends Actor with A
   override def receive = follower
 
   // @todo MessageReceived message passthrough (comining functions?) - not done in elector
+  // @todo must be ready to handle signals send from paxos instances (including retry)
+  // @todo sent start to actor
+  // @todo proposers who never received value are going to hang...
 
   def follower: Receive = {
     case BecomingLeader =>
