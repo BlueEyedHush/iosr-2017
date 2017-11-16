@@ -1,5 +1,11 @@
 ---
 
+- hosts: localhost
+  connection: local
+  tasks:
+  - command: "aws s3 cp {{ playbook_dir }}/../target/scala-2.12/paxos-iosr.jar s3://iosr/travis-builds/"
+    when: local_deployment is defined
+
 - hosts: tag_Name_paxos_server
   vars_files:
   - global_vars.yml

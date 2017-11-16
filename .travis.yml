@@ -2,7 +2,7 @@ language: scala
 before_install: pushd paxos
 
 before_deploy:
-  sbt "set test in assembly := {}" assembly;
+  sbt assembly;
   mkdir deploy-temp;
   cp target/scala-2.12/paxos-iosr.jar deploy-temp/;
 

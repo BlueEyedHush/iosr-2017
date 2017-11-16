@@ -2,7 +2,7 @@
 
 touch /tmp/external-script-used
 
-BASE=/home/ubuntu
+BASE=/home/ubuntu/
 
 pkill java
-nohup java -Dconfig.file="$BASE/application.conf" -jar "$BASE"/paxos-iosr.jar < /dev/null &> out.stdlog &
+nohup java -cp "$BASE":"$BASE"paxos-iosr.jar agh.iosr.paxos.client.LocalClient < /dev/null &> out.stdlog &
