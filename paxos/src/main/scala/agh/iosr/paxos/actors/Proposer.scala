@@ -49,6 +49,12 @@ object Proposer {
   private val p1Conf = TimerConf("p1a", 200, P1Tick)
   private val p2Conf = TimerConf("p2a", 200, P2Tick)
   private val tConf = TimerConf("timeout", 2000, Timeout)
+
+  trait Result
+  case class OurValueChosen(iid: InstanceId, v: KeyValue) extends Result
+  case class OverrodeInP1(iid: InstanceId, overridingRoundId: RoundId) extends Result
+  case class OverrodeInP2(iid: InstanceId, overridingRoundId: RoundId) extends Result
+  case class InstanceTimeout(iid: InstanceId) extends Result
 }
 
 // @todo move messages here
@@ -174,7 +180,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     case ReceivedMessage(m @ ConsensusMessage(messageMo), sid) if paxosState.isDefined =>
       val Some(PaxosInstanceState(currentMo)) = paxosState
 
-      // @todo check for
+      // @todo check for roudn only, not instance
       if(messageMo == currentMo) {
         val st = state[Phase1]
 
@@ -219,6 +225,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
         }
 
       } else {
+        // @todo most external logging not needed
         if (messageMo.instanceId != currentMo.instanceId) {
           logg(IgnoringInstance(messageMo.instanceId, currentMo.instanceId, m))
         } else {
@@ -235,7 +242,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       val alive = st.promises.keySet ++ st.rejectors
 
       (0 until nodeCount).filterNot(id => alive.contains(id) || id == nodeId).foreach(id => {
-        // @todo helper method for sending (avoid code duplication)
         val msg = Prepare(st.mo)
         communicator ! SendUnicast(msg, id)
       })
@@ -262,7 +268,6 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
           context.become(phase1)
           logg(ContextChange("phase1"))
           self ! Start
-          // @todo we could also inform user that we are ready for his next request
         } else {
           logg(VotingUnsuccessful(iid, votedValue))
           /*
@@ -274,6 +279,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
           currently, the old one is simply _dropped_
            */
 
+          // @todo remove all queues, simply inform actor
           paxosState = None
           rqQueue.addFirst(st.ourValue)
 
@@ -292,6 +298,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
       // but what if our proposal has actually been accepted? we probably need to wait for the result, otherwise
       // we might overwrite some values
       // all in all, we cannot do much here
+      // @todo inform parent
       state[Phase2].nacks += sid
       logg(RoundOverridden(mmo, higherId, "2b"))
       ()
@@ -349,6 +356,7 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
     largest.headOption
   }
 
+  // @todo move timers to utils
   def startTimer(conf: TimerConf) =
     if (!disableTimeouts)
       timers.startPeriodicTimer(conf.key, conf.msg, FiniteDuration(conf.msInterval, TimeUnit.MILLISECONDS))
