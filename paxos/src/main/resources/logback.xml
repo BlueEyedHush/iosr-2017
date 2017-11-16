@@ -1,0 +1,18 @@
+<configuration>
+    <root level="DEBUG">
+        <appender name="consoleAppender" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <charset>UTF-8</charset>
+                <Pattern>[%level] %msg%n</Pattern>
+            </encoder>
+        </appender>
+
+        <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+            <file>logs/app.log</file>
+            <append>true</append>
+            <encoder>
+                <pattern>%level: %msg%n</pattern>
+            </encoder>
+        </appender>
+    </root>
+</configuration>

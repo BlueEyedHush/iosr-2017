@@ -8,6 +8,7 @@ import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
 import agh.iosr.paxos.utils._
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
+import akka.event.LoggingAdapter
 
 import scala.collection._
 import scala.concurrent.duration.FiniteDuration
@@ -86,12 +87,15 @@ object ExecutionTracing {
 
 // @todo move to separate file
 object Printer {
-  def props(): Props = Props(new Printer)
+  def props(nodeId: NodeId): Props = Props(new Printer(nodeId))
 }
 
-class Printer extends Actor with ActorLogging {
-  override def receive = {
-    case m => log.info(s"$m")
+class Printer(val nodeId: NodeId) extends Actor with ActorLogging {
+  private implicit val implId: NodeId = nodeId
+  private implicit val implLog: LoggingAdapter = log
+
+  override def receive: Receive = {
+    case m => FileLog.info(m)
   }
 }
 
@@ -102,6 +106,9 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
 
   import ExecutionTracing._
   import Proposer._
+
+  private implicit val implId: NodeId = nodeId
+  private implicit val implLog: LoggingAdapter = log
 
   private val minQuorumSize = nodeCount/2 + 1
 
@@ -127,16 +134,34 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
   // @todo simply alias to phase1
   override def receive = {
     case Ready =>
-      communicator = sender()
-      context.become(idle)
+      logg(ContextChange("ready"))
 
+      communicator = sender()
       logg(CommInitialized(communicator))
+
+      // @todo attach logger in local test scenario
+      if (rqQueue.size() > 0) {
+        /* process messages that were enqueued while we were waiting for UDP */
+        logg(ContextChange("phase1"))
+        context.become(phase1)
+        self ! Start
+      } else {
+        /* otherwise just go to idle */
+        logg(ContextChange("idle"))
+        context.become(idle)
+      }
+
+
+    case KvsSend(key, value) =>
+      val kv = KeyValue(key, value)
+      rqQueue.addLast(kv)
+      logg(RequestQueued(kv))
   }
 
   // @todo del
   def idle: Receive = {
     case KvsSend(key, value) =>
-      rqQueue.add(KeyValue(key, value) )
+      rqQueue.add(KeyValue(key, value))
       context.become(phase1)
       self ! Start
 
@@ -222,6 +247,9 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
                 startTimer(tConf)
               }
             }
+
+
+          case _ =>
         }
 
       } else {
@@ -341,16 +369,16 @@ class Proposer(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId,
         }
       case RPromise(NULL_ROUND, None) => ()
       case other =>
-        log.error(s"Got some illegal RPromise: $other")
+        FileLog.error(s"Got some illegal RPromise: $other")
     }
 
     if (largestFound > currentRid) {
-      log.error(s"Stumbled upon something illegal while sifting through received proposals /2A, " +
+      FileLog.error(s"Stumbled upon something illegal while sifting through received proposals /2A, " +
         s"rid ($largestFound) > currentRid ($currentRid)/")
     }
 
     if (largest.size > 1) {
-      log.error(s"Quorum reported in 1B more than one value: $largest")
+      FileLog.error(s"Quorum reported in 1B more than one value: $largest")
     }
 
     largest.headOption

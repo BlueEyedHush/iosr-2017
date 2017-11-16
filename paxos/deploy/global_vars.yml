@@ -6,3 +6,7 @@ per_region:
   us-east-1:
     ami: "ami-27fd535d"
     code_deploy_url: "https://aws-codedeploy-us-east-1.s3.amazonaws.com/latest/install"
+
+log_dir: "{{ playbook_dir}}/../logs/remote/"
+paxos_path: /home/ubuntu/
+paxos_port: 2550

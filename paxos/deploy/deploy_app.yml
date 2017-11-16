@@ -1,0 +1,42 @@
+---
+
+- hosts: localhost
+  connection: local
+  tasks:
+  - command: "aws s3 cp {{ playbook_dir }}/../target/scala-2.12/paxos-iosr.jar s3://iosr/travis-builds/"
+    when: local_deployment is defined
+
+- hosts: tag_Name_paxos_server
+  vars_files:
+  - global_vars.yml
+  tasks:
+  - debug: msg="{{ hostvars[item].ec2_private_ip_address }}:{{ paxos_port }}"
+    with_items: "{{ groups['tag_Name_paxos_server'] }}"
+    register: output
+    tags:
+    - config_gen
+
+  - set_fact:
+      ip_list: "\"{{ output.results | map(attribute='msg') | join('\",\"') }}\""
+    tags:
+    - config_gen
+
+  - set_fact:
+      my_ip: "\"{{ hostvars[ansible_host].ec2_private_ip_address }}:{{ paxos_port }}\""
+    tags:
+    - config_gen
+  - template:
+      src: "{{ playbook_dir }}/application.conf.j2"
+      dest: "{{ paxos_path }}/application.conf"
+      mode: "0600"
+    tags:
+    - config_gen
+  - template:
+      src: "{{ playbook_dir }}/aws-run.sh"
+      dest: "{{ paxos_path }}/aws-run.sh"
+      mode: "0777"
+  - file:
+      path: "{{ paxos_path }}/logs"
+      state: directory
+  - command: "aws s3 cp s3://iosr/travis-builds/paxos-iosr.jar /home/ubuntu"
+  - command: "./aws-run.sh"

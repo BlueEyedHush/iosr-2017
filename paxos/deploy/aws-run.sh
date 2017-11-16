@@ -1,3 +1,8 @@
 #!/usr/bin/env bash
 
-java -jar /home/ubuntu/paxos-iosr.jar
+touch /tmp/external-script-used
+
+BASE=/home/ubuntu/
+
+pkill java
+nohup java -cp "$BASE":"$BASE"paxos-iosr.jar agh.iosr.paxos.client.LocalClient < /dev/null &> out.stdlog &

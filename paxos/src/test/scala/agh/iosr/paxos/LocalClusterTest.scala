@@ -18,8 +18,6 @@ class LocalClusterTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
   "Learners and acceptors" must {
 
     "communicate with each other" in {
-        // @todo move much of that logic to manager
-
       val instanceId = 8
       val roundId = 4
       val key = "TestKey"
@@ -35,17 +33,21 @@ class LocalClusterTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       val manager = new LocalClusterSetupManager(clusterIdToIp, listener)
       manager.setup()
 
+      /* testCommunicator allows us to get a inside look at communication between actor systems created by
+      * LocalClusterSetupManager */
       val (combinedIpToIdMap, combinedIdToIpMap) = manager.getCombinedMaps()
       val testSubscriber = TestProbe()
       val testCommunicator = system.actorOf(Communicator.props(Set(testSubscriber.ref), listener, combinedIpToIdMap, combinedIdToIpMap))
       testSubscriber.expectMsg(Ready)
 
+      /* we also subscribe to one of the learners (from real cluster) so that we are able to see ValueLearned */
       val nodeId = 1
       manager.getNodeActor(nodeId, "learner") match {
         case Some(actorRef) => actorRef ! LearnerSubscribe
         case None => throw ElementNotFound
       }
 
+      /* since we test without proposer, we directly send phase 2A message via our testCommunicator*/
       val remoteId = 0
       testCommunicator ! SendUnicast(AcceptRequest(RegularRoundIdentifier(instanceId, roundId), KeyValue(key, value)), remoteId)
       testSubscriber.expectMsg(ReceivedMessage(Accepted(RegularRoundIdentifier(instanceId, roundId), KeyValue(key, value)), remoteId))

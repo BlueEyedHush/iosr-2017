@@ -1,0 +1,9 @@
+---
+
+- hosts: tag_Name_paxos_server
+  vars_files:
+  - global_vars.yml
+  tasks:
+  - fetch:
+      src: "logs/app.log"
+      dest: "{{ log_dir }}"
