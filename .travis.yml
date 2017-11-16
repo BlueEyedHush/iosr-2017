@@ -6,7 +6,6 @@ before_deploy:
   mkdir tar-temp;
   cp target/scala-2.12/paxos-iosr.jar tar-temp;
   cp appspec.yml tar-temp;
-  cp deploy/aws-run.sh tar-temp;
   mkdir deploy-temp;
   pushd tar-temp;
   zip ../deploy-temp/app.zip *;

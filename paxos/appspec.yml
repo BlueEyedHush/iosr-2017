@@ -5,5 +5,5 @@ files:
     destination: /home/ubuntu/
 hooks:
   ApplicationStart:
-    - location: aws-run.sh
+    - location: /home/ubuntu/aws-run.sh
       timeout: 3600

@@ -11,6 +11,10 @@
       src: "{{ playbook_dir }}/application.conf.j2"
       dest: "{{ paxos_path }}/application.conf"
       mode: "0600"
+  - template:
+      src: "{{ playbook_dir }}/aws-run.sh"
+      dest: "{{ paxos_path }}/aws-run.sh"
+      mode: "0777"
   - file:
       path: "{{ paxos_path }}/logs"
       state: directory
