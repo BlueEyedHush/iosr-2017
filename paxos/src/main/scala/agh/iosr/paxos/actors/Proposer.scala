@@ -6,7 +6,7 @@ import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
 import agh.iosr.paxos.utils._
-import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props, Timers}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
 import akka.event.LoggingAdapter
 
 import scala.collection._
@@ -36,7 +36,10 @@ object Proposer {
   private val p2Conf = TimerConf("p2a", 200, P2Tick)
   private val tConf = TimerConf("timeout", 2000, Timeout)
 
-  trait Result
+  sealed trait Result {
+    def iid: InstanceId
+  }
+
   case class OurValueChosen(iid: InstanceId, v: KeyValue) extends Result
   case class OverrodeInP1(iid: InstanceId) extends Result
   case class OverrodeInP2(iid: InstanceId) extends Result
@@ -152,7 +155,7 @@ class Proposer(val dispatcher: ActorRef,
             logg(RoundOverridden(currentRoundId, mostRecent, "1b"))
             
             dispatcher ! OverrodeInP1(currentRoundId.instanceId)
-            self ! PoisonPill
+            // self ! PoisonPill
 
           case pm @ Promise(_, vr, ovv) =>
             if (promises.contains(sid)) {
@@ -219,7 +222,7 @@ class Proposer(val dispatcher: ActorRef,
       if (votedValue == ourV) {
         logg(InstanceSuccessful(iid))
         dispatcher ! OurValueChosen(currentRoundId.instanceId, ourV)
-        self ! PoisonPill
+        // self ! PoisonPill
       } else {
         logg(VotingUnsuccessful(iid, votedValue))
         /*
@@ -232,7 +235,7 @@ class Proposer(val dispatcher: ActorRef,
          */
 
         dispatcher ! OverrodeInP2(currentRoundId.instanceId)
-        self ! PoisonPill
+        // self ! PoisonPill
       }
 
       stopTimer(p2Conf)
@@ -243,7 +246,7 @@ class Proposer(val dispatcher: ActorRef,
       nacks += sid
       logg(RoundOverridden(mmo, higherId, "2b"))
       dispatcher ! OverrodeInP2(currentRoundId.instanceId)
-      self ! PoisonPill
+      // self ! PoisonPill
 
       // @todo actuall set votedValue!
     case P2Tick =>
@@ -259,7 +262,7 @@ class Proposer(val dispatcher: ActorRef,
       logg(TimeoutHit(TimeoutType.instance, "abandoning"))
 
       dispatcher ! InstanceTimeout(currentRoundId.instanceId)
-      self ! PoisonPill
+      // self ! PoisonPill
   }
 
   // @todo: extract and test separatelly
