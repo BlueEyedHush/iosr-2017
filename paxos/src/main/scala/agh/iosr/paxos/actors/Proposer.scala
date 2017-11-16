@@ -59,7 +59,8 @@ object Proposer {
 
 // @todo move messages here
 // @todo add type to SendableMessage, modify all case expressions
-
+// @todo on timeout actor should terminate
+// @todo right after initialization it should initiate phase 1
 object ExecutionTracing {
   object TimeoutType extends Enumeration {
     val p1b, p2b, instance = Value
