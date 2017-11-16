@@ -24,17 +24,9 @@ package object predef {
   case object ConfigError extends RuntimeException
 
   type IpString = String
+
   type IdToIpMap = immutable.Map[NodeId, InetSocketAddress]
   type IpToIdMap = immutable.Map[InetSocketAddress, NodeId]
 
-  sealed trait RoundIdentifier{
-    def instanceId: InstanceId
-    def roundId: RoundId
-  }
-
-  object RoundIdentifier {
-    def unapply(ri: RoundIdentifier): Option[(InstanceId, RoundId)] = Some(ri.instanceId, ri.roundId)
-  }
-  case class RegularRoundIdentifier(instanceId: InstanceId, roundId: RoundId) extends RoundIdentifier
-  case class SpecialRoundIdentifier(instanceId: InstanceId, roundId: RoundId) extends RoundIdentifier
+  case class RoundIdentifier(instanceId: InstanceId, roundId: RoundId)
 }

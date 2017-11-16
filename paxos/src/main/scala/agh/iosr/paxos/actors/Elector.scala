@@ -1,10 +1,6 @@
 package agh.iosr.paxos.actors
 
-import java.util
-
-import agh.iosr.paxos.messages.Messages.KvsSend
-import agh.iosr.paxos.predef.NodeId
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, Props}
 
 /**
   * ~~~ I'm not sure if mechanism described below is correct, should be checked against some authoritative source ~~~
@@ -105,39 +101,26 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Props}
   * - dedicated leader selection algorithm, described in a3365ebb2734839157c3f55fb7394820cd249560
   */
 
-
-
 object Elector {
-  def props(learner: ActorRef, nodeId: NodeId, nodeCount: NodeId): Props =
-    Props(new Elector(learner, nodeId, nodeCount))
+  def props(): Props = Props(new Elector())
 }
 
-
-class Elector(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId) extends Actor with ActorLogging {
-
-  private var communicator: ActorRef = _
-  private val queue = new util.LinkedList[ReceivedMessage]
-
+class Elector extends Actor with ActorLogging {
   /**
     * - waiting for Ready (from communicator),
     * - enqueuing requests;
     * - after Ready -> LeaderAbsent, start timer
     */
-  override def receive: Receive = {
-    case Ready =>
-      communicator = sender
-      context.become(leaderAbsent)
+  override def receive = {
 
-    case msg @ ReceivedMessage(KvsSend(key, value), remoteId) =>
-      queue.add(msg)
   }
 
   /**
-  * - on enter we start Paxos iff we didn't received any proposal earlier
-  * - if we did, we respond to it now that we are leaderless
-  */
-  def leaderAbsent: Receive = {
-    case _ =>
+    * - on enter we start Paxos iff we didn't received any proposal earlier
+    * - if we did, we respond to it now that we are leaderless
+    */
+  override def leaderAbsent: Receive = {
+
   }
 
   /**
@@ -145,8 +128,8 @@ class Elector(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId) 
     * - forwarding all requests to leader (use KvsSend),
     * - handling timer expiry (-> leaderAbsent)
     */
-  def leaderPresent: Receive = {
-    case _ =>
+  override def leaderPresent: Receive = {
+
   }
 
   /**
@@ -157,7 +140,7 @@ class Elector(val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId) 
     * - sending out keepalives on timer
     * - defeating all attempts to reelect leader
     */
-  def leader: Receive = {
-    case _ =>
+  override def leader: Receive = {
+
   }
 }

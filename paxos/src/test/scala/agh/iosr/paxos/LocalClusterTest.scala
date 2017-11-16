@@ -2,7 +2,7 @@ package agh.iosr.paxos
 
 import agh.iosr.paxos.actors.{Communicator, Ready, ReceivedMessage, SendUnicast}
 import agh.iosr.paxos.messages.Messages.{AcceptRequest, Accepted, LearnerSubscribe, ValueLearned}
-import agh.iosr.paxos.predef.{IpToIdMap, KeyValue, RegularRoundIdentifier}
+import agh.iosr.paxos.predef.{IpToIdMap, KeyValue, RoundIdentifier}
 import agh.iosr.paxos.utils.{ClusterInfo, ElementNotFound, LocalClusterSetupManager}
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
@@ -43,14 +43,14 @@ class LocalClusterTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       /* we also subscribe to one of the learners (from real cluster) so that we are able to see ValueLearned */
       val nodeId = 1
       manager.getNodeActor(nodeId, "learner") match {
-        case Some(actorRef) => actorRef ! LearnerSubscribe
+        case Some(actorRef) => actorRef ! LearnerSubscribe()
         case None => throw ElementNotFound
       }
 
       /* since we test without proposer, we directly send phase 2A message via our testCommunicator*/
       val remoteId = 0
-      testCommunicator ! SendUnicast(AcceptRequest(RegularRoundIdentifier(instanceId, roundId), KeyValue(key, value)), remoteId)
-      testSubscriber.expectMsg(ReceivedMessage(Accepted(RegularRoundIdentifier(instanceId, roundId), KeyValue(key, value)), remoteId))
+      testCommunicator ! SendUnicast(AcceptRequest(RoundIdentifier(instanceId, roundId), KeyValue(key, value)), remoteId)
+      testSubscriber.expectMsg(ReceivedMessage(Accepted(RoundIdentifier(instanceId, roundId), KeyValue(key, value)), remoteId))
 
       expectMsg(ValueLearned(instanceId, key, value))
 

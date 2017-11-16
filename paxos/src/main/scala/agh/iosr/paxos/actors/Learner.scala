@@ -30,11 +30,11 @@ class Learner() extends Actor with ActorLogging {
   }
 
   def ready: Receive = {
-    case LearnerSubscribe =>
+    case LearnerSubscribe() =>
       subscribers += sender
       log.info("Learner:" + self + " @ Receive")
 
-    case ReceivedMessage(Accepted(RegularRoundIdentifier(instanceId, _), KeyValue(key, value)), _) =>
+    case ReceivedMessage(Accepted(RoundIdentifier(instanceId, _), KeyValue(key, value)), _) =>
       log.info("Learner:" + self + " @ Accepted")
       memory.put(key, (instanceId, value))
       subscribers.foreach {_ ! ValueLearned(instanceId, key, value)}
