@@ -1,6 +1,5 @@
 package agh.iosr.paxos.actors
 
-import agh.iosr.paxos._
 import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.predef._
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
@@ -33,7 +32,6 @@ class Acceptor()
 
       data match {
         case Prepare(RegularRoundIdentifier(instanceId, roundId)) =>
-        case Prepare(RoundIdentifier(instanceId, roundId)) =>
           log.info(s"Acceptor:" + self + " @ {Prepare(RoundIdentifier("+instanceId+", "+roundId+"))}")
 
           runningInstances.getOrElse(instanceId, InstanceState(NULL_ROUND, NULL_ROUND, None, NULL_NODE_ID)) match {

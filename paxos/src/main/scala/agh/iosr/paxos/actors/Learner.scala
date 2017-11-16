@@ -13,7 +13,7 @@ object Learner {
   def props(): Props = Props(new Learner)
 }
 
-class Learner() extends Actor {
+class Learner() extends Actor with ActorLogging {
   var subscribers = new ListBuffer[ActorRef]()
   var memory: mutable.HashMap[String, (InstanceId, Value)] = mutable.HashMap.empty
   var getRequests: mutable.HashMap[Int, (ActorRef, String, ListBuffer[Option[(InstanceId, Value)]])] = mutable.HashMap.empty
