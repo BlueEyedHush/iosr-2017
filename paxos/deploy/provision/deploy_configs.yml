@@ -11,3 +11,6 @@
       src: "{{ playbook_dir }}/application.conf.j2"
       dest: "{{ paxos_path }}/application.conf"
       mode: "0600"
+  - file:
+      path: "{{ paxos_path }}/logs"
+      state: directory
