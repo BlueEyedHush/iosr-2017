@@ -3,12 +3,8 @@ before_install: pushd paxos
 
 before_deploy:
   sbt "set test in assembly := {}" assembly;
-  mkdir tar-temp;
-  cp target/scala-2.12/paxos-iosr.jar tar-temp;
-  cp appspec.yml tar-temp;
   mkdir deploy-temp;
-  pushd tar-temp;
-  zip ../deploy-temp/app.zip *;
+  cp target/scala-2.12/paxos-iosr.jar deploy-temp/;
   popd;
 
 deploy:

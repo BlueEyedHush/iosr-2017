@@ -1,9 +1,0 @@
-version: 0.0
-os: linux
-files:
-  - source: paxos-iosr.jar
-    destination: /home/ubuntu/
-hooks:
-  ApplicationStart:
-    - location: /home/ubuntu/aws-run.sh
-      timeout: 3600

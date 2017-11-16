@@ -25,17 +25,5 @@
       name: openjdk-8-jdk
       state: present
   - apt:
-      name: ruby
+      name: awscli
       state: present
-  - apt:
-      name: wget
-      state: present
-  - get_url:
-      url: "{{ per_region[aws_region]['code_deploy_url'] }}"
-      dest: "/home/ubuntu"
-  - file:
-      path: "/home/ubuntu/install"
-      mode: 0700
-  - command: "./install auto"
-    args:
-      chdir: "/home/ubuntu"
