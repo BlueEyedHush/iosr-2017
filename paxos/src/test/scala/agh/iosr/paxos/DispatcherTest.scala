@@ -11,6 +11,19 @@ class DispatcherTest extends TestKit(ActorSystem("MySpec"))
     TestKit.shutdownActorSystem(system)
   }
 
+  /*
+  ToDo:
+  - regardless of whether leader or not, forwards all messages to dispatcher
+  - correct state transitions upon becoming leader
+  - when leader
+    - restarts instances that fail for any reason
+    - for each received KvsSend starts new instance
+    - correctly allocates id batches
+    - upon allocating new batch frees all unused from previous one
+  - when follower
+    - ignores failing instances
+   */
+
   "A dispatcher" - {
 /*    "multi-instance test" - {
       val values = (1 until 5).map(x => KeyValue(x.toString, x))
