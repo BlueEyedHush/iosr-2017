@@ -46,13 +46,7 @@ object Proposer {
   case class InstanceTimeout(iid: InstanceId) extends Result
 }
 
-// @todo move messages here
-// @todo add type to SendableMessage, modify all case expressions
-// @todo on timeout actor should terminate
-// @todo right after initialization it should initiate phase 1
-// @todo rewrite FileLog (but also need to modify parser)
-// @todo maybe eliminate case-class based states altogether?
-object ExecutionTracing {
+object ProposerExecutionTracing {
   object TimeoutType extends Enumeration {
     val p1b, p2b, instance = Value
   }
@@ -90,8 +84,8 @@ class Proposer(val dispatcher: ActorRef,
                val disableTimeouts: Boolean)
   extends Actor with ActorLogging with Timers {
 
-  import ExecutionTracing._
   import Proposer._
+  import ProposerExecutionTracing._
 
   private implicit val implId: NodeId = nodeId
   private implicit val implLog: LoggingAdapter = log
