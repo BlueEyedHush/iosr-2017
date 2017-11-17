@@ -33,7 +33,7 @@ object Dispatcher {
             nodeCount: NodeId,
             loggers: Set[ActorRef] = Set(),
             provider: ProposerProvider = defaultProvider): Props =
-    Props(new Dispatcher(comm, learner, nodeId, nodeCount, loggers))
+    Props(new Dispatcher(comm, learner, nodeId, nodeCount, loggers, provider))
 }
 
 /**
