@@ -59,10 +59,10 @@ class Dispatcher(val comm: ActorRef,
   import DispatcherExecutionTracing._
   import Elector._
 
-  private var currentBatchOffset: InstanceId = NULL_INSTANCE_ID
-  private var nextFreeInPool: InstanceId = NULL_INSTANCE_ID
+  private var currentBatchOffset: InstanceId = -1*batchSize
+  private var nextFreeInPool: InstanceId = 0
   private val instanceMap = mutable.Map[InstanceId, (KeyValue, ActorRef)]()
-  private var freePool: Array[ActorRef] = _
+  private var freePool: Array[ActorRef] = Array()
 
   override def receive = follower
 
@@ -151,7 +151,7 @@ class Dispatcher(val comm: ActorRef,
 
   private def allocateInstances() = {
     /* first clean up instances left over from previous sessions */
-    (nextFreeInPool until batchSize).foreach(id => {
+    (nextFreeInPool until freePool.size).foreach(id => {
       val instance = freePool(id)
       instance ! PoisonPill
       logg(UnusedDistanceDisposedOf())

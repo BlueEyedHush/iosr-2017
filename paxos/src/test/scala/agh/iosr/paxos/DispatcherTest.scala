@@ -1,8 +1,48 @@
 package agh.iosr.paxos
 
-import akka.actor.ActorSystem
-import akka.testkit.TestKit
+import agh.iosr.paxos.DispatcherTestHelper.IidMap
+import agh.iosr.paxos.actors.Dispatcher
+import agh.iosr.paxos.actors.Dispatcher.ProposerProvider
+import agh.iosr.paxos.actors.DispatcherExecutionTracing.BatchAllocated
+import agh.iosr.paxos.actors.Elector.BecomingLeader
+import agh.iosr.paxos.actors.Proposer.Start
+import agh.iosr.paxos.predef.{InstanceId, NodeId}
+import agh.iosr.paxos.utils.{MockCommunicator, MockLogger, MockProposer}
+import akka.actor.{ActorRef, ActorSystem}
+import akka.testkit.{TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfterAll, FreeSpecLike, Matchers}
+
+import scala.collection._
+
+object DispatcherTestHelper {
+  val OUR_ID: NodeId = 0
+  val CLUSTER_SIZE: NodeId = 4
+  val INITIAL_IID: InstanceId = 0
+
+  type IidMap = mutable.Map[InstanceId, MockProposer]
+
+  class CachingProvider() {
+    val iidToProbe: IidMap = mutable.Map[InstanceId, MockProposer]()
+
+    val proposerP: ProposerProvider = (context, dispatcher, comm, iid, nodeId, nodeCount) => {
+      // @todo pass system, not context?
+      val probe = TestProbe()(context.system)
+      iidToProbe += (iid -> MockProposer(probe))
+      probe.ref
+    }
+  }
+
+  def create()(implicit system: ActorSystem) = {
+    val comm = TestProbe()
+    val learner = TestProbe() // ignored, anyone can send learners values
+    val logger = TestProbe()
+    val cp = new CachingProvider()
+
+    val props = Dispatcher.props(comm.ref, learner.ref, OUR_ID, CLUSTER_SIZE, Set(logger.ref), cp.proposerP)
+    val actor = system.actorOf(props)
+    (MockLogger(logger), MockCommunicator(comm), actor, cp)
+  }
+}
 
 class DispatcherTest extends TestKit(ActorSystem("MySpec"))
   with FreeSpecLike with Matchers with BeforeAndAfterAll {
@@ -25,7 +65,55 @@ class DispatcherTest extends TestKit(ActorSystem("MySpec"))
     - ignores failing instances
    */
 
+  import agh.iosr.paxos.{DispatcherTestHelper => H}
+
   "A dispatcher" - {
+    def iidRange(count: InstanceId) = {
+      val first = H.INITIAL_IID
+      val afterLast = first + count
+      first until afterLast
+    }
+
+    def expectMsgToBeSentToAllProposer(proposerCount: InstanceId, msg: Any) = {
+      implicit val (MockLogger(logger), MockCommunicator(comm), dispatcher, cp) = H.create()
+      val r = iidRange(proposerCount)
+
+      dispatcher ! BecomingLeader
+      r.foreach(_ => dispatcher ! msg)
+      logger.expectMsg(BatchAllocated())
+      r.foreach(cp.iidToProbe(_).v.expectMsg(msg))
+    }
+
+    "starts proposers" in {
+      expectMsgToBeSentToAllProposer(5, Start)
+    }
+
+    "should forward to proposers" - {
+
+
+      def sendRequests(count: InstanceId, message: Any)(implicit d: ActorRef, m: IidMap) = {
+        // @todo remove
+      }
+
+
+      "when follower" - {
+        // @todo table drive for all message types
+        "consensus message" in {
+
+        }
+
+        "ValueLearned" in {
+
+        }
+
+      }
+
+      "when leader" in {
+        implicit val (MockLogger(logger), MockCommunicator(comm), dispatcher, cp) = H.create()
+        dispatcher ! BecomingLeader
+      }
+    }
+
 /*    "multi-instance test" - {
       val values = (1 until 5).map(x => KeyValue(x.toString, x))
       val altValue = KeyValue("alt", 100)
