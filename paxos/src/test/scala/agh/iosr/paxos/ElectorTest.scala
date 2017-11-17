@@ -8,8 +8,6 @@ import akka.actor.ActorSystem
 import akka.testkit.{TestKit, TestProbe}
 import org.scalatest._
 
-case class MockDispatcher(val v: TestProbe) extends AnyVal
-
 class ElectorTest extends TestKit(ActorSystem("MySpec"))
   with FreeSpecLike with Matchers with BeforeAndAfterAll with BeforeAndAfter {
   override def afterAll(): Unit = {

@@ -6,15 +6,11 @@ import agh.iosr.paxos.actors._
 import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
-import agh.iosr.paxos.utils.{LogMessage, Printer}
+import agh.iosr.paxos.utils._
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{TestKit, TestProbe}
 import org.scalatest._
 import org.slf4j.LoggerFactory
-
-case class MockCommunicator(val v: TestProbe) extends AnyVal
-case class MockLogger(val v: TestProbe) extends AnyVal
-// @todo uncomment case class MockDispatcher(val v: TestProbe) extends AnyVal
 
 /**
   * proposer should think it's running on node 0
