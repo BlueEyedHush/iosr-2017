@@ -1,10 +1,11 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.actors.ExecutionTracing.LogMessage
+import agh.iosr.paxos.actors.ExecutionTracing._
 import agh.iosr.paxos.actors._
 import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
+import agh.iosr.paxos.utils.{LogMessage, Printer}
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{TestKit, TestProbe}
 import org.scalatest._
@@ -171,8 +172,6 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
   val RETRANSMISSION_TIMEOUT = 200 // in ms
   val INSTANCE_TIMEOUT = 2000 // in ms
   val NODE_COUNT = 4
-
-  import ExecutionTracing._
 
   val log = LoggerFactory.getLogger(classOf[ProposerTest])
   val helper = new ProposerTestHelper(NODE_COUNT)

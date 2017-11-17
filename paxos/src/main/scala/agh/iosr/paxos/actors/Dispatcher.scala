@@ -1,13 +1,17 @@
 package agh.iosr.paxos.actors
 
-import agh.iosr.paxos.messages.Messages.KvsSend
+import agh.iosr.paxos.actors.Proposer._
+import agh.iosr.paxos.messages.Messages.{ConsensusMessage, KvsSend, ValueLearned}
 import agh.iosr.paxos.predef._
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
+
+import scala.collection._
 
 object Dispatcher {
   val batchSize = 10
 
-  def props(comm: ActorRef): Props = Props(new Dispatcher(comm))
+  def props(comm: ActorRef, learner: ActorRef, nodeId: NodeId, nodeCount: NodeId): Props =
+    Props(new Dispatcher(comm, learner, nodeId, nodeCount))
 }
 
 /**
@@ -20,40 +24,119 @@ object Dispatcher {
   * We don't restart instances that timed out
   *
   */
-class Dispatcher(val comm: ActorRef) extends Actor with ActorLogging {
+  
+class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
+  extends Actor with ActorLogging {
+
   import Dispatcher._
   import Elector._
 
+  /* @todo marking as terminated + set of non-terminated instances */
+
   private var currentBatchOffset: InstanceId = NULL_INSTANCE_ID
-  private var offsetWithinBatch: InstanceId = NULL_INSTANCE_ID
-  private var proposers: Array[ActorRef] = _
+  private var nextFreeInPool: InstanceId = NULL_INSTANCE_ID
+  private val instanceMap = mutable.Map[InstanceId, (KeyValue, ActorRef)]()
+  private var freePool: Array[ActorRef] = _
 
-  override def receive = notLeader
+  override def receive = follower
 
-  def notLeader: Receive = {
+  // @todo MessageReceived message passthrough (comining functions?) - not done in elector
+  // @todo passthrough must also include valuelearned
+  // @todo must be ready to handle signals send from paxos instances (including retry)
+  // @todo sent start to actor
+  // @todo proposers who never received value are going to hang...
+  // @todo keep tracck of what value send to whom; unused instances in Set, used go to map, terminate all unsued on becoming leader
+
+  def tryForward(iid: InstanceId, m: Any) = {
+    /* forward message to correct instance (if such an instance has been registered) */
+    val instanceOption =  instanceMap.get(iid)
+    if (instanceOption.isDefined) {
+      val (_, instance) = instanceOption.get
+      instance ! m
+    } else {
+      val nfiid = currentBatchOffset + nextFreeInPool
+      log.info(s"No match for such RoundIdentifier in our map. [ m = $m, nextFreeInstanceId = $nfiid")
+    }
+  }
+
+  def restart(iid: InstanceId) = {
+    assert(instanceMap.contains(iid))
+    val (v, _) = instanceMap(iid)
+    self ! KvsSend(v.k, v.v)
+  }
+
+  val messageReceivedPassthrough: Receive = {
+    case m @ ReceivedMessage(ConsensusMessage(rid), _) => tryForward(rid.instanceId, m)
+    case m @ ValueLearned(iid, _, _) => tryForward(iid, m)
+  }
+
+  def proposerResultHandler(recreate: Boolean): Receive = {
+    case m: Result =>
+      sender() ! PoisonPill
+
+      if (recreate) {
+        m match {
+          case OverrodeInP1(iid) => restart(iid)
+          case OverrodeInP2(iid) => restart(iid)
+          case InstanceTimeout(iid) => restart(iid)
+        }
+      }
+
+      instanceMap.remove(m.iid)
+  }
+
+  val followerHandler: Receive = {
     case BecomingLeader =>
       allocateInstances()
       context.become(leader)
 
     case m @ KvsSend(_, _) =>
-      log.error(s"Dispatcher received $m while being in notLeader state")
+      log.error(s"Dispatcher received $m while being a follower")
   }
 
-  def leader: Receive = {
+  val leaderHandler: Receive = {
     case LoosingLeader =>
-      context.become(notLeader)
+      context.become(follower)
 
-    case m @ KvsSend(_, _) =>
-      // @todo request new batch if needed, find free instance and send message to it
-      if (offsetWithinBatch == batchSize)
+    case m @ KvsSend(k,v) =>
+      /* request new batch if needed, find free instance and send message to it */
+      if (nextFreeInPool == batchSize)
         allocateInstances()
 
-      proposers(offsetWithinBatch) ! m
+      val proposer = freePool(nextFreeInPool)
+      val iid = currentBatchOffset + nextFreeInPool
+      nextFreeInPool += 1
 
-      offsetWithinBatch += 1
+      instanceMap += (iid -> (KeyValue(k,v), proposer))
+      proposer ! m
   }
 
-  private def allocateInstances() = {
+  def follower: Receive = followerHandler orElse
+    proposerResultHandler(recreate = false) orElse
+    messageReceivedPassthrough
 
+  def leader: Receive = leaderHandler orElse
+    proposerResultHandler(recreate = true) orElse
+    messageReceivedPassthrough
+
+
+
+  private def allocateInstances() = {
+    /* first clean up instances left over from previous sessions */
+    (nextFreeInPool until batchSize).foreach(id => {
+      val (_, instance) = freePool(id)
+      instance ! PoisonPill
+    })
+
+    /* update counters for new batch */
+    nextFreeInPool = 0
+    currentBatchOffset += batchSize
+
+    /* allocate new instances */
+    freePool = (0 until batchSize).map(id => {
+      val r = context.system.actorOf(Proposer.props(self, comm, currentBatchOffset + id, nodeId, nodeCount))
+      r ! Start
+      r
+    }).toArray
   }
 }
