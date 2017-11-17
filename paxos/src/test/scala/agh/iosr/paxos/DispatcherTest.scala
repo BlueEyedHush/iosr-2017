@@ -13,8 +13,9 @@ class DispatcherTest extends TestKit(ActorSystem("MySpec"))
 
   /*
   ToDo:
-  - regardless of whether leader or not, forwards all messages to dispatcher
+  - regardless of whether leader or not, forwards all messages to correct Proposer
   - correct state transitions upon becoming leader
+  - verify instances receive Start & KvsSend messages
   - when leader
     - restarts instances that fail for any reason
     - for each received KvsSend starts new instance

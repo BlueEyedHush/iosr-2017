@@ -3,15 +3,25 @@ package agh.iosr.paxos.actors
 import agh.iosr.paxos.actors.Proposer._
 import agh.iosr.paxos.messages.Messages.{ConsensusMessage, KvsSend, ValueLearned}
 import agh.iosr.paxos.predef._
+import agh.iosr.paxos.utils.LogMessage
 import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
 
 import scala.collection._
 
+object DispatcherExecutionTracing {
+  case class ContextChange(to: String) extends LogMessage
+  case class PaxosMessageForwarding(m: Any, success: Boolean, currentBatchOffset: InstanceId) extends LogMessage
+  case class DispatchedValueToPaxosInstance(v: KeyValue, cause: Any) extends LogMessage
+  case class IllegalMessage(m: Any, illegalityCause: String) extends LogMessage
+  case class BatchAllocated() extends LogMessage
+  case class UnusedDistanceDisposedOf() extends LogMessage
+}
+
 object Dispatcher {
   val batchSize = 10
 
-  def props(comm: ActorRef, learner: ActorRef, nodeId: NodeId, nodeCount: NodeId): Props =
-    Props(new Dispatcher(comm, learner, nodeId, nodeCount))
+  def props(comm: ActorRef, learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, loggers: Set[ActorRef] = Set()): Props =
+    Props(new Dispatcher(comm, learner, nodeId, nodeCount, loggers))
 }
 
 /**
@@ -25,10 +35,11 @@ object Dispatcher {
   *
   */
   
-class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId)
+class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, loggers: Set[ActorRef])
   extends Actor with ActorLogging {
 
   import Dispatcher._
+  import DispatcherExecutionTracing._
   import Elector._
 
   private var currentBatchOffset: InstanceId = NULL_INSTANCE_ID
@@ -44,9 +55,10 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, 
     if (instanceOption.isDefined) {
       val (_, instance) = instanceOption.get
       instance ! m
+      logg(PaxosMessageForwarding(m, success = true, currentBatchOffset))
     } else {
       val nfiid = currentBatchOffset + nextFreeInPool
-      log.info(s"No match for such RoundIdentifier in our map. [ m = $m, nextFreeInstanceId = $nfiid")
+      logg(PaxosMessageForwarding(m, success = false, currentBatchOffset))
     }
   }
 
@@ -71,6 +83,9 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, 
           case OverrodeInP2(iid) => restart(iid)
           case InstanceTimeout(iid) => restart(iid)
         }
+
+        val res = m.asInstanceOf[Result]
+        logg(DispatchedValueToPaxosInstance(instanceMap(m.iid)._1, m))
       }
 
       instanceMap.remove(m.iid)
@@ -80,26 +95,31 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, 
     case BecomingLeader =>
       allocateInstances()
       context.become(leader)
+      logg(ContextChange("leader"))
 
     case m @ KvsSend(_, _) =>
-      log.error(s"Dispatcher received $m while being a follower")
+      logg(IllegalMessage(m, "received KvsSend while being follower"))
   }
 
   val leaderHandler: Receive = {
     case LoosingLeader =>
       context.become(follower)
+      logg(ContextChange("follower"))
 
     case m @ KvsSend(k,v) =>
       /* request new batch if needed, find free instance and send message to it */
       if (nextFreeInPool == batchSize)
         allocateInstances()
 
+      val value = KeyValue(k,v)
       val proposer = freePool(nextFreeInPool)
       val iid = currentBatchOffset + nextFreeInPool
       nextFreeInPool += 1
 
-      instanceMap += (iid -> (KeyValue(k,v), proposer))
+      instanceMap += (iid -> (value, proposer))
       proposer ! m
+
+      logg(DispatchedValueToPaxosInstance(value, m))
   }
 
   def follower: Receive = followerHandler orElse
@@ -117,6 +137,7 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, 
     (nextFreeInPool until batchSize).foreach(id => {
       val instance = freePool(id)
       instance ! PoisonPill
+      logg(UnusedDistanceDisposedOf())
     })
 
     /* update counters for new batch */
@@ -129,5 +150,9 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, 
       r ! Start
       r
     }).toArray
+
+    logg(BatchAllocated())
   }
+
+  def logg(msg: LogMessage): Unit = loggers.foreach(_ ! msg)
 }

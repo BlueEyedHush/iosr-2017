@@ -46,7 +46,7 @@ object Proposer {
   case class InstanceTimeout(iid: InstanceId) extends Result
 }
 
-object ExecutionTracing {
+object ProposerExecutionTracing {
   object TimeoutType extends Enumeration {
     val p1b, p2b, instance = Value
   }
@@ -84,8 +84,8 @@ class Proposer(val dispatcher: ActorRef,
                val disableTimeouts: Boolean)
   extends Actor with ActorLogging with Timers {
 
-  import ExecutionTracing._
   import Proposer._
+  import ProposerExecutionTracing._
 
   private implicit val implId: NodeId = nodeId
   private implicit val implLog: LoggingAdapter = log

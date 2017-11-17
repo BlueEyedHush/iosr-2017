@@ -1,7 +1,7 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.actors.ExecutionTracing._
 import agh.iosr.paxos.actors.Proposer._
+import agh.iosr.paxos.actors.ProposerExecutionTracing._
 import agh.iosr.paxos.actors._
 import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.messages.SendableMessage
