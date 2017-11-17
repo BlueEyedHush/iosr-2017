@@ -1,10 +1,11 @@
 package agh.iosr.paxos.actors
 
+import agh.iosr.paxos.actors.Dispatcher.ProposerProvider
 import agh.iosr.paxos.actors.Proposer._
 import agh.iosr.paxos.messages.Messages.{ConsensusMessage, KvsSend, ValueLearned}
 import agh.iosr.paxos.predef._
 import agh.iosr.paxos.utils.LogMessage
-import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
+import akka.actor.{Actor, ActorContext, ActorLogging, ActorRef, PoisonPill, Props}
 
 import scala.collection._
 
@@ -20,7 +21,18 @@ object DispatcherExecutionTracing {
 object Dispatcher {
   val batchSize = 10
 
-  def props(comm: ActorRef, learner: ActorRef, nodeId: NodeId, nodeCount: NodeId, loggers: Set[ActorRef] = Set()): Props =
+  // dispatcher, comm, currentBatchOffset + id, nodeId, nodeCount
+  type ProposerProvider = (ActorContext, ActorRef, ActorRef, InstanceId, NodeId, NodeId) => ActorRef
+
+  val defaultProvider: ProposerProvider = (context, dispatcher, comm, iid, nodeId, nodeCount) =>
+    context.system.actorOf(Proposer.props(dispatcher, comm, iid, nodeId, nodeCount))
+
+  def props(comm: ActorRef,
+            learner: ActorRef,
+            nodeId: NodeId,
+            nodeCount: NodeId,
+            loggers: Set[ActorRef] = Set(),
+            provider: ProposerProvider = defaultProvider): Props =
     Props(new Dispatcher(comm, learner, nodeId, nodeCount, loggers))
 }
 
@@ -35,7 +47,12 @@ object Dispatcher {
   *
   */
   
-class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, val nodeCount: NodeId, loggers: Set[ActorRef])
+class Dispatcher(val comm: ActorRef,
+                 val learner: ActorRef,
+                 val nodeId: NodeId,
+                 val nodeCount: NodeId,
+                 loggers: Set[ActorRef],
+                 provider: ProposerProvider)
   extends Actor with ActorLogging {
 
   import Dispatcher._
@@ -146,7 +163,7 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, 
 
     /* allocate new instances */
     freePool = (0 until batchSize).map(id => {
-      val r = context.system.actorOf(Proposer.props(self, comm, currentBatchOffset + id, nodeId, nodeCount))
+      val r = provider(context, self, comm, currentBatchOffset + id, nodeId, nodeCount)
       r ! Start
       r
     }).toArray
