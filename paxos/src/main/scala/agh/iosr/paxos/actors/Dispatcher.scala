@@ -61,7 +61,8 @@ class Dispatcher(val comm: ActorRef,
 
   private var currentBatchOffset: InstanceId = -1*batchSize
   private var nextFreeInPool: InstanceId = 0
-  private val instanceMap = mutable.Map[InstanceId, (KeyValue, ActorRef)]()
+  private val instanceMap = mutable.Map[InstanceId, ActorRef]()
+  private val valuesMap = mutable.Map[InstanceId, KeyValue]()
   private var freePool: Array[ActorRef] = Array()
 
   override def receive = follower
@@ -70,7 +71,7 @@ class Dispatcher(val comm: ActorRef,
     /* forward message to correct instance (if such an instance has been registered) */
     val instanceOption =  instanceMap.get(iid)
     if (instanceOption.isDefined) {
-      val (_, instance) = instanceOption.get
+      val instance = instanceOption.get
       instance ! m
       logg(PaxosMessageForwarding(m, success = true, currentBatchOffset))
     } else {
@@ -80,8 +81,8 @@ class Dispatcher(val comm: ActorRef,
   }
 
   def restart(iid: InstanceId) = {
-    assert(instanceMap.contains(iid))
-    val (v, _) = instanceMap(iid)
+    assert(valuesMap.contains(iid))
+    val v = valuesMap(iid)
     self ! KvsSend(v.k, v.v)
   }
 
@@ -102,10 +103,11 @@ class Dispatcher(val comm: ActorRef,
         }
 
         val res = m.asInstanceOf[Result]
-        logg(DispatchedValueToPaxosInstance(instanceMap(m.iid)._1, m))
+        logg(DispatchedValueToPaxosInstance(valuesMap(m.iid), m))
       }
 
       instanceMap.remove(m.iid)
+      valuesMap.remove(m.iid)
   }
 
   val followerHandler: Receive = {
@@ -133,7 +135,8 @@ class Dispatcher(val comm: ActorRef,
       val iid = currentBatchOffset + nextFreeInPool
       nextFreeInPool += 1
 
-      instanceMap += (iid -> (value, proposer))
+      valuesMap += (iid -> value)
+      // @todo check your idea with set
       proposer ! m
 
       logg(DispatchedValueToPaxosInstance(value, m))
@@ -163,8 +166,10 @@ class Dispatcher(val comm: ActorRef,
 
     /* allocate new instances */
     freePool = (0 until batchSize).map(id => {
+      val iid = currentBatchOffset + id
       val r = provider(context, self, comm, currentBatchOffset + id, nodeId, nodeCount)
       r ! Start
+      instanceMap += (iid -> r)
       r
     }).toArray
 

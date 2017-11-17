@@ -1,14 +1,14 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.DispatcherTestHelper.IidMap
-import agh.iosr.paxos.actors.Dispatcher
 import agh.iosr.paxos.actors.Dispatcher.ProposerProvider
 import agh.iosr.paxos.actors.DispatcherExecutionTracing.BatchAllocated
 import agh.iosr.paxos.actors.Elector.BecomingLeader
 import agh.iosr.paxos.actors.Proposer.Start
-import agh.iosr.paxos.predef.{InstanceId, NodeId}
+import agh.iosr.paxos.actors.{Dispatcher, ReceivedMessage}
+import agh.iosr.paxos.messages.Messages.{Prepare, ValueLearned}
+import agh.iosr.paxos.predef.{InstanceId, NodeId, RoundIdentifier}
 import agh.iosr.paxos.utils.{MockCommunicator, MockLogger, MockProposer}
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.ActorSystem
 import akka.testkit.{TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfterAll, FreeSpecLike, Matchers}
 
@@ -74,41 +74,37 @@ class DispatcherTest extends TestKit(ActorSystem("MySpec"))
       first until afterLast
     }
 
-    def expectMsgToBeSentToAllProposer(proposerCount: InstanceId, msg: Any) = {
+    def checkEachProposer(proposerCount: InstanceId, trigger: Any)(verifier: TestProbe => Unit) = {
       implicit val (MockLogger(logger), MockCommunicator(comm), dispatcher, cp) = H.create()
       val r = iidRange(proposerCount)
 
       dispatcher ! BecomingLeader
-      r.foreach(_ => dispatcher ! msg)
+      r.foreach(_ => dispatcher ! trigger)
       logger.expectMsg(BatchAllocated())
-      r.foreach(cp.iidToProbe(_).v.expectMsg(msg))
+      r.foreach(iid => verifier(cp.iidToProbe(iid).v))
     }
 
     "starts proposers" in {
-      expectMsgToBeSentToAllProposer(5, Start)
+      checkEachProposer(5, "dummy")(_.expectMsg(Start))
     }
 
     "should forward to proposers" - {
+      def checkWithMsg(msg: Any) =
+        checkEachProposer(2, msg)(_.expectMsgAllOf(Start, msg))
 
-
-      def sendRequests(count: InstanceId, message: Any)(implicit d: ActorRef, m: IidMap) = {
-        // @todo remove
-      }
-
-
-      "when follower" - {
+      "when leader" - {
         // @todo table drive for all message types
+        // @todo test across batches
         "consensus message" in {
-
+          checkWithMsg(ReceivedMessage(Prepare(RoundIdentifier(0, 12)), 0))
         }
 
         "ValueLearned" in {
-
+          checkWithMsg(ValueLearned(0, "dummy", 1))
         }
-
       }
 
-      "when leader" in {
+      "when follower" in {
         implicit val (MockLogger(logger), MockCommunicator(comm), dispatcher, cp) = H.create()
         dispatcher ! BecomingLeader
       }
