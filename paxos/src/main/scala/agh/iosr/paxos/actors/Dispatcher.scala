@@ -115,7 +115,7 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, 
   private def allocateInstances() = {
     /* first clean up instances left over from previous sessions */
     (nextFreeInPool until batchSize).foreach(id => {
-      val (_, instance) = freePool(id)
+      val instance = freePool(id)
       instance ! PoisonPill
     })
 

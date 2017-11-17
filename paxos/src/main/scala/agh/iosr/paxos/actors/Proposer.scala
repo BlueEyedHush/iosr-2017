@@ -13,14 +13,14 @@ import scala.collection._
 import scala.concurrent.duration.FiniteDuration
 
 object Proposer {
-  def props(elector: ActorRef,
+  def props(dispatcher: ActorRef,
             communicator: ActorRef,
             ourInstanceId: InstanceId,
             nodeId: NodeId,
             nodeCount: NodeId,
             loggers: Set[ActorRef] = Set(),
             disableTimeouts: Boolean = false): Props =
-    Props(new Proposer(elector, communicator, ourInstanceId, nodeId, nodeCount, loggers, disableTimeouts))
+    Props(new Proposer(dispatcher, communicator, ourInstanceId, nodeId, nodeCount, loggers, disableTimeouts))
 
   case class RPromise(lastRoundVoted: RoundId, ov: Option[KeyValue])
 
