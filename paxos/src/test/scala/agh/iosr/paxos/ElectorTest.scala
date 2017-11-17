@@ -15,7 +15,7 @@ class ElectorTest extends TestKit(ActorSystem("MySpec"))
   override def afterAll(): Unit = {
     TestKit.shutdownActorSystem(system)
   }
-
+  
   def create() = {
     val disProbe = TestProbe()
     val commProbe = TestProbe()
@@ -78,13 +78,91 @@ class ElectorTest extends TestKit(ActorSystem("MySpec"))
       comm.expectMsg(SendUnicast(Vote(10), 1))
     }
 
-    // "should become a leader" in {
-    //   implicit val (elector, comm, dis) = create
-    //   comm.send(elector, FollowerTimeout)
-    //   comm.expectMsg(SendMulticast(VoteForMe(value)))
-    //   comm.send(elector, ReceivedMessage(VoteForMe(1), 1))
-    //   comm.expectMsg(SendUnicast(Vote(10), 1))
-    //   dis.expectMsg(BecomingLeader)
-    // }
+    "should become a leader" in {
+      implicit val (elector, comm, dis) = create
+      comm.send(elector, FollowerTimeout)
+      comm.expectMsg(SendMulticast(VoteForMe(value)))
+      comm.send(elector, ReceivedMessage(Vote(1), 1))
+      dis.expectMsg(BecomingLeader)
+    }
+
+  "as leader should receive message" in {
+    implicit val (elector, comm, dis) = create
+    comm.send(elector, FollowerTimeout)
+    comm.expectMsg(SendMulticast(VoteForMe(value)))
+    comm.send(elector, ReceivedMessage(Vote(1), 1))
+    dis.expectMsg(BecomingLeader)
+
+    comm.send(elector, KvsSend(key, value))
+    dis.expectMsg(KvsSend(key, value))
+    }
+
+  "as leader should receive wrapped message" in {
+    implicit val (elector, comm, dis) = create
+    comm.send(elector, FollowerTimeout)
+    comm.expectMsg(SendMulticast(VoteForMe(value)))
+    comm.send(elector, ReceivedMessage(Vote(1), 1))
+    dis.expectMsg(BecomingLeader)
+
+    comm.send(elector, ReceivedMessage(KvsSend(key, value), 0))
+    dis.expectMsg(KvsSend(key, value))
+    }
+
+  "as leader should accept keep alive" in {
+    implicit val (elector, comm, dis) = create
+    comm.send(elector, FollowerTimeout)
+    comm.expectMsg(SendMulticast(VoteForMe(value)))
+    comm.send(elector, ReceivedMessage(Vote(1), 1))
+    dis.expectMsg(BecomingLeader)
+
+    comm.send(elector, KeepAliveTick)
+    comm.expectMsg(SendMulticast(KeepAlive(1)))
+    }
+
+  "as leader should accept wrapped keep alive" in {
+    implicit val (elector, comm, dis) = create
+    comm.send(elector, FollowerTimeout)
+    comm.expectMsg(SendMulticast(VoteForMe(value)))
+    comm.send(elector, ReceivedMessage(Vote(1), 1))
+    dis.expectMsg(BecomingLeader)
+
+    comm.send(elector, ReceivedMessage(KeepAlive(0), 0))
+    comm.expectMsg(SendMulticast(KeepAlive(1)))
+    }
+
+  "as leader should accept vote for him" in {
+    implicit val (elector, comm, dis) = create
+    comm.send(elector, FollowerTimeout)
+    comm.expectMsg(SendMulticast(VoteForMe(value)))
+    comm.send(elector, ReceivedMessage(Vote(1), 1))
+    dis.expectMsg(BecomingLeader)
+
+    comm.send(elector, ReceivedMessage(VoteForMe(0), 0))
+    comm.expectMsg(SendMulticast(KeepAlive(1)))
+    }
+
+  "as leader should accept keep alive from higher number" in {
+    implicit val (elector, comm, dis) = create
+    comm.send(elector, FollowerTimeout)
+    comm.expectMsg(SendMulticast(VoteForMe(value)))
+    comm.send(elector, ReceivedMessage(Vote(1), 1))
+    dis.expectMsg(BecomingLeader)
+
+    comm.send(elector, ReceivedMessage(KeepAlive(3), 2))
+    dis.expectMsg(LoosingLeader)
+    dis.expectMsg(LeaderChanged(2))
+    }
+
+  "as leader should handle vote from higher number" in {
+    implicit val (elector, comm, dis) = create
+    comm.send(elector, FollowerTimeout)
+    comm.expectMsg(SendMulticast(VoteForMe(value)))
+    comm.send(elector, ReceivedMessage(Vote(1), 1))
+    dis.expectMsg(BecomingLeader)
+
+    comm.send(elector, ReceivedMessage(VoteForMe(3), 2))
+    comm.expectMsg(SendUnicast(Vote(3), 2))
+    dis.expectMsg(LoosingLeader)
+    }
   }
 }
