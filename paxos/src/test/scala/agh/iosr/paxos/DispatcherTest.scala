@@ -74,33 +74,45 @@ class DispatcherTest extends TestKit(ActorSystem("MySpec"))
       first until afterLast
     }
 
-    def checkEachProposer(proposerCount: InstanceId, trigger: Any)(verifier: TestProbe => Unit) = {
+    def checkEachProposer[T](proposerCount: InstanceId)
+                            (generator: InstanceId => List[T])
+                            (verifier: (TestProbe, List[T]) => Unit) = {
+      assert(proposerCount <= Dispatcher.batchSize)
+
       implicit val (MockLogger(logger), MockCommunicator(comm), dispatcher, cp) = H.create()
       val r = iidRange(proposerCount)
 
       dispatcher ! BecomingLeader
-      r.foreach(_ => dispatcher ! trigger)
+
+      val payloads = r.map(iid => generator(iid))
+      val rWithIdx = r.zipWithIndex
+      rWithIdx.foreach {
+        case (iid, idx) => payloads(idx).foreach(m => dispatcher ! m)
+      }
+
       logger.expectMsg(BatchAllocated())
-      r.foreach(iid => verifier(cp.iidToProbe(iid).v))
+
+      rWithIdx.foreach {
+        case (iid, idx) => verifier(cp.iidToProbe(iid).v, payloads(idx))
+      }
     }
 
     "starts proposers" in {
-      checkEachProposer(5, "dummy")(_.expectMsg(Start))
+      checkEachProposer(5)(_ => List("dummy"))((p, _) => p.expectMsg(Start))
     }
 
     "should forward to proposers" - {
-      def checkWithMsg(msg: Any) =
-        checkEachProposer(2, msg)(_.expectMsgAllOf(Start, msg))
-
       "when leader" - {
         // @todo table drive for all message types
         // @todo test across batches
         "consensus message" in {
-          checkWithMsg(ReceivedMessage(Prepare(RoundIdentifier(0, 12)), 0))
+          def m(iid: InstanceId) = List(ReceivedMessage(Prepare(RoundIdentifier(iid, 12)), 0))
+          checkEachProposer(5)(m)((p, ms) => p.expectMsgAllOf(Start, ms.head))
         }
 
         "ValueLearned" in {
-          checkWithMsg(ValueLearned(0, "dummy", 1))
+          def m(iid: InstanceId) = List(ValueLearned(iid, "dummy", 1))
+          checkEachProposer(5)(m)((p, ms) => p.expectMsgAllOf(Start, ms.head))
         }
       }
 
