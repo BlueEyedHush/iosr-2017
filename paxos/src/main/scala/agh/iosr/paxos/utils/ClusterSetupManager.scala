@@ -1,11 +1,21 @@
 package agh.iosr.paxos.utils
 
-import akka.actor.{ActorRef, ActorSystem}
+import agh.iosr.paxos.actors._
+import agh.iosr.paxos.predef.{IdToIpMap, NodeId}
+import akka.actor.{ActorRef, ActorSystem, Props}
 
-case class NodeEntry(system: ActorSystem, proposer: ActorRef, acceptor: ActorRef, learner: ActorRef, kvStore: ActorRef, communicator: ActorRef)
+import scala.collection.mutable
+
+case class NodeEntry(system: ActorSystem,
+                     elector: ActorRef,
+                     dispatcher: ActorRef,
+                     acceptor: ActorRef,
+                     learner: ActorRef,
+                     kvStore: ActorRef,
+                     communicator: ActorRef)
 
 class ClusterSetupManager {
-/*
+
   var nodes: mutable.Map[NodeId, NodeEntry] = mutable.Map.empty
 
   def setup(idToIpMap: IdToIpMap, myIp: java.net.InetSocketAddress): Int = {
@@ -20,10 +30,11 @@ class ClusterSetupManager {
     val system = ActorSystem("Node" + id)
     val acceptor = system.actorOf(Props(new Acceptor()))
     val learner = system.actorOf(Props(new Learner()))
-    val proposer = system.actorOf(Proposer.props(learner, id, positive))
-    val kvs = system.actorOf(Props(new Kvs(learner, proposer)))
-    val communicator = system.actorOf(Communicator.props(Set(acceptor, learner, proposer), myIp, ipToIdMap, idToIpMap))
-    nodes += (id -> NodeEntry(system, proposer, acceptor, learner, kvs, communicator))
+    val communicator = system.actorOf(Communicator.props(Set(acceptor, learner), myIp, ipToIdMap, idToIpMap))
+    val dispatcher = system.actorOf(Dispatcher.props(communicator, learner, id, positive))
+    val elector = system.actorOf(Elector.props(dispatcher,id, positive))
+    val kvStore = system.actorOf(Props(new Kvs(learner, elector)))
+    nodes += (id -> NodeEntry(system, elector, dispatcher, acceptor, learner, kvStore, communicator))
 
     return id
   }
@@ -38,16 +49,17 @@ class ClusterSetupManager {
 
   def getActorSystem(nodeId: NodeId): Option[ActorSystem] = {
     nodes.get(nodeId) match {
-      case Some(NodeEntry(system, _, _, _, _, _)) => Option(system)
+      case Some(NodeEntry(system, _, _, _, _, _, _)) => Option(system)
       case _ => None
     }
   }
 
   def getNodeActor(nodeId: NodeId, actorType: String): Option[ActorRef] = {
     nodes.get(nodeId) match {
-      case Some(NodeEntry(_, proposer, acceptor, learner, kvStore, communicator)) =>
+      case Some(NodeEntry(_, elector, dispatcher, acceptor, learner, kvStore, communicator)) =>
         actorType match {
-          case "proposer" => Option(proposer)
+          case "elector" => Option(elector)
+          case "dispatcher" => Option(dispatcher)
           case "acceptor" => Option(acceptor)
           case "learner" => Option(learner)
           case "kvStore" => Option(kvStore)
@@ -56,5 +68,5 @@ class ClusterSetupManager {
         }
       case _ => None
     }
-  }*/
+  }
 }
