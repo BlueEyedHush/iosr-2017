@@ -1,17 +1,16 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.actors.ExecutionTracing.LogMessage
+import agh.iosr.paxos.actors.Proposer._
+import agh.iosr.paxos.actors.ProposerExecutionTracing._
 import agh.iosr.paxos.actors._
 import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
+import agh.iosr.paxos.utils._
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{TestKit, TestProbe}
 import org.scalatest._
 import org.slf4j.LoggerFactory
-
-case class MockCommunicator(val v: TestProbe) extends AnyVal
-case class MockLogger(val v: TestProbe) extends AnyVal
 
 /**
   * proposer should think it's running on node 0
@@ -24,7 +23,8 @@ class ProposerTestHelper(val nodeCount: NodeId) {
   val PROPOSER_NODE_ID: NodeId = 0
   private val SMALLEST_ROUND_ID: RoundId = -1 // unconditionally msmaller than anything IdGenerator'll generate
   private val others = (1 until nodeCount).toSeq
-  private val DESIGNATED_OTHER: NodeId = others.last 
+  private val DESIGNATED_OTHER: NodeId = others.last
+  val INSTANCE_ID: InstanceId = 0
 
   private def sendOne(msg: SendableMessage)(implicit p: ActorRef, c: MockCommunicator) =
     c.v.send(p, ReceivedMessage(msg, DESIGNATED_OTHER))
@@ -61,7 +61,6 @@ class ProposerTestHelper(val nodeCount: NodeId) {
   def sendP2bHigherProposalNack(fromWhom: List[NodeId])(implicit p: ActorRef, currentRid: RoundIdentifier, c: MockCommunicator) =
     sendFromOthers(HigherProposalReceived(currentRid, currentRid.roundId + 1), fromWhom)
 
-
   var actorId: Int = 0
   def create(name: String = "", disableTimeouts: Boolean = true)(implicit system: ActorSystem) = {
     val actorName = if (!name.isEmpty) name else {
@@ -70,24 +69,29 @@ class ProposerTestHelper(val nodeCount: NodeId) {
       numName
     }
 
-    val learnerProbe = TestProbe()
+    val dispatcherProbe = TestProbe()
     val commProbe = TestProbe()
     val listener = TestProbe()
     val printer = system.actorOf(Printer.props(PROPOSER_NODE_ID), s"${actorName}_p")
-    val proposer = system.actorOf(Proposer.props(learnerProbe.ref, PROPOSER_NODE_ID, nodeCount, Set(listener.ref, printer), disableTimeouts), actorName)
-    commProbe.send(proposer, Ready)
-    learnerProbe.expectMsg(LearnerSubscribe())
-    (MockLogger(listener), MockCommunicator(commProbe), proposer)
+    val proposer = system.actorOf(Proposer.props(dispatcherProbe.ref,
+      commProbe.ref,
+      INSTANCE_ID,
+      PROPOSER_NODE_ID,
+      nodeCount,
+      Set(listener.ref, printer),
+      disableTimeouts), actorName)
+
+    (MockLogger(listener), MockCommunicator(commProbe), proposer, MockDispatcher(dispatcherProbe))
   }
 
-  def expectInstanceStarted(v: KeyValue, ridChecker: RoundIdentifier => Boolean = _ => true)(implicit comm: MockCommunicator): RoundIdentifier = {
+  def expectInstanceStarted(ridChecker: RoundIdentifier => Boolean = _ => true)(implicit comm: MockCommunicator): RoundIdentifier = {
     comm.v.expectMsgPF() {
       case SendMulticast(Prepare(rid)) if ridChecker(rid) => rid
     }
   }
 
-  def expectNewInstanceStarted(v: KeyValue)(implicit currentRid: RoundIdentifier, comm: MockCommunicator): RoundIdentifier = {
-    expectInstanceStarted(v, rid => rid.instanceId > currentRid.instanceId)
+  def expectNewInstanceStarted()(implicit currentRid: RoundIdentifier, comm: MockCommunicator): RoundIdentifier = {
+    expectInstanceStarted(rid => rid.instanceId > currentRid.instanceId)
   }
 
   def expect2aWithValue(v: KeyValue)(implicit comm: MockCommunicator) = {
@@ -113,7 +117,7 @@ class ProposerTestHelper(val nodeCount: NodeId) {
   def successfulVoting(v: KeyValue, sendValue: Boolean = true)(implicit p: ActorRef, c: MockCommunicator) = {
     if (sendValue)
       sendKvsGet(v)
-    implicit val rid = expectInstanceStarted(v)
+    implicit val rid = expectInstanceStarted()
     sendEmptyP1Bs()
     expect2a()
     sendValueChosen(v)
@@ -126,7 +130,7 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     /* first round */
     if (sendValue)
       sendKvsGet(v)
-    implicit var rid = expectInstanceStarted(v)
+    implicit var rid = expectInstanceStarted()
     if(byNack)
       sendP1bRoundTooOld(alt)
     else {
@@ -135,7 +139,7 @@ class ProposerTestHelper(val nodeCount: NodeId) {
       sendValueChosen(alt)
     }
     /* second round */
-    rid = expectInstanceStarted(v)
+    rid = expectInstanceStarted()
     sendEmptyP1Bs()
     expect2a()
     sendValueChosen(v)
@@ -148,13 +152,13 @@ class ProposerTestHelper(val nodeCount: NodeId) {
     /* first round */
     if (sendValue)
       sendKvsGet(v)
-    implicit var rid = expectInstanceStarted(v)
+    implicit var rid = expectInstanceStarted()
     sendEmptyP1Bs()
     expect2a()
     sendP2bHigherProposalNack()
     sendValueChosen(alt)
     /* second round */
-    rid = expectInstanceStarted(v)
+    rid = expectInstanceStarted()
     sendEmptyP1Bs()
     expect2a()
     sendValueChosen(v)
@@ -162,6 +166,8 @@ class ProposerTestHelper(val nodeCount: NodeId) {
       c.v.expectNoMessage(noMesgWaitTime)
     rid
   }
+
+  // @todo move or delete e2e helpers
 }
 
 
@@ -171,8 +177,6 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
   val RETRANSMISSION_TIMEOUT = 200 // in ms
   val INSTANCE_TIMEOUT = 2000 // in ms
   val NODE_COUNT = 4
-
-  import ExecutionTracing._
 
   val log = LoggerFactory.getLogger(classOf[ProposerTest])
   val helper = new ProposerTestHelper(NODE_COUNT)
@@ -186,6 +190,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
     val ourValue = KeyValue("our", 1)
     val differentValue = KeyValue("previous", 2)
+/* @todo move to elector
 
     "should correctly register communicator" in {
       implicit val (probe, comm, proposer) = helper.create("comm_test")
@@ -193,75 +198,121 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         case CommInitialized(ref) if comm.v.ref == ref => true
       }
     }
+*/
 
     "in phase 1" - {
-      "should initiate it after receiving request" in {
-        implicit val (logger, comm, proposer) = helper.create("inst_start")
+      "should initiate it immediatelly after receiving Start" in {
+        implicit val (logger, comm, proposer, MockDispatcher(d)) = helper.create("inst_start")
 
-        helper.sendKvsGet(ourValue)
-        helper.expectInstanceStarted(ourValue)
+        d.send(proposer, Start)
+        helper.expectInstanceStarted()
       }
 
       "after receiving 1B" - {
         def prepareActors(nameSuffix: String) = {
-          implicit val r @ (logger, comm, proposer) = helper.create(s"after_1b_recv_$nameSuffix")
-          helper.sendKvsGet(ourValue)
-          val rid = helper.expectInstanceStarted(ourValue)
+          implicit val r @ (logger, comm, proposer, dispatcher) = helper.create(s"after_1b_recv_$nameSuffix")
+          dispatcher.v.send(proposer, Start)
+          val rid = helper.expectInstanceStarted()
           r :+ rid
         }
 
-        "empty with lower id" - {
-          "should initiate 2A with requested value" in {
-            implicit val (logger, comm, proposer, rid) = prepareActors("empty")
+        "without value available" - {
+          "empty with lower id" - {
+            "should block in waitingForValue state" in {
+              implicit val (logger, comm, proposer, _, rid) = prepareActors("empty")
+              helper.sendEmptyP1Bs()
+              logger.v.fishForSpecificMessage() {
+                case ContextChange("waitingForValue") => true
+              }
+            }
+          }
+
+          "containing value with lower id" - {
+            "should initiate 2A with value already voted on" in {
+              implicit val (logger, comm, proposer, _, rid) = prepareActors("lower_id")
+              helper.sendValuedP1Bs(differentValue)
+              helper.expect2aWithValue(differentValue)
+            }
+          }
+
+          "a RoundTooOld nack" - {
+            "should abandon current instance and inform dispatcher" in {
+              implicit val (logger, comm, proposer, dispatcher, rid) = prepareActors("round_too_old")
+              helper.sendP1bRoundTooOld(differentValue)
+              dispatcher.v.expectMsg(OverrodeInP1(helper.INSTANCE_ID))
+            }
+          }
+        }
+
+        "with value available" - {
+          "it should continue immediatelly, without entering waitingForValue state" in {
+            implicit val (logger, comm, proposer, _, rid) = prepareActors("value_avail")
+            helper.sendKvsGet(ourValue)
             helper.sendEmptyP1Bs()
-            helper.expect2aWithValue(ourValue)
+            val firstContextChange = logger.v.fishForSpecificMessage() {
+              case m @ ContextChange(_) => m
+            }
+            firstContextChange.asInstanceOf[ContextChange].to shouldBe "phase2"
           }
         }
 
-        "containing value with lower id" - {
-          "should initiate 2A with value already voted on" in {
-            implicit val (logger, comm, proposer, rid) = prepareActors("lower_id")
-            helper.sendValuedP1Bs(differentValue)
-            helper.expect2aWithValue(differentValue)
-          }
+      }
+    }
+
+    // @todo test that values are handled correctly, regardless of when they are sent (before start,   ...)
+
+    "in phase waitingForValue" - {
+      def prepareActor() = {
+        implicit val r @ (logger, comm, proposer, dispatcher) = helper.create("waiting_for_value")
+
+        dispatcher.v.send(proposer, Start)
+        implicit val rid = helper.expectInstanceStarted()
+        helper.sendEmptyP1Bs()
+        logger.v.fishForSpecificMessage() {
+          case ContextChange("waitingForValue") => true
         }
 
-        "with higher id" - {
-          "should abandon current instance and start new one with the same value" in {
-            implicit val (logger, comm, proposer, rid) = prepareActors("higher_id")
-            helper.sendP1bRoundTooOld(differentValue)
-            helper.expectNewInstanceStarted(ourValue)
-          }
-        }
+        r :+ rid
+      }
+
+      "initiate 2A upon receiving value" in {
+        implicit val (_, comm, proposer, _, _) = prepareActor()
+        helper.sendKvsGet(ourValue)
+        helper.expect2aWithValue(ourValue)
       }
     }
 
     "in phase 2" - {
-      "when rejected in 2B" - {
-        def prepareActor(nameSuffix: String) = {
-          implicit val r @ (logger, comm, proposer) = helper.create(s"2b_reject_$nameSuffix")
-          helper.sendKvsGet(ourValue)
-          implicit val rid = helper.expectInstanceStarted(ourValue)
-          helper.sendEmptyP1Bs()
-          helper.expect2a()
+      def prepareActor(nameSuffix: String) = {
+        implicit val r @ (logger, comm, proposer, dispatcher) = helper.create(s"2b_$nameSuffix")
+        dispatcher.v.send(proposer, Start)
+        implicit val rid = helper.expectInstanceStarted()
+        helper.sendEmptyP1Bs()
+        helper.sendKvsGet(ourValue)
+        helper.expect2a()
+        r :+ rid
+      }
+
+      "we should immediatelly inform dispatcher" - {
+        "when rejected in 2B" in {
+          implicit val (logger, comm, proposer, dispatcher, rid) = prepareActor("reject")
+
           helper.sendP2bHigherProposalNack()
-          r :+ rid
+          dispatcher.v.expectMsg(OverrodeInP2(helper.INSTANCE_ID))
         }
 
-        "but value gets chosen" - {
-          "should report success" in {
-            implicit val (logger: MockLogger, comm, proposer, rid: RoundIdentifier) = prepareActor("value_chosen")
-            helper.sendValueChosen(ourValue)
-            helper.fishForLoggerMsg(InstanceSuccessful(rid.instanceId))
-          }
+        "when voting was successful" in {
+          implicit val (logger, comm, proposer, dispatcher, rid) = prepareActor("accept")
+
+          helper.sendValueChosen(ourValue)
+          dispatcher.v.expectMsg(OurValueChosen(helper.INSTANCE_ID, ourValue))
         }
 
-        "and value wasn't chosen" - {
-          "should start new round for the same value" in {
-            implicit val (logger, comm, proposer, rid) = prepareActor("value_not_chosen")
-            helper.sendValueChosen(differentValue)
-            helper.fishForLoggerMsg(RequestProcessingStarted(ourValue))
-          }
+        "when different value is chosen without prior rejections" in {
+          implicit val (logger, comm, proposer, dispatcher, rid) = prepareActor("different_value")
+
+          helper.sendValueChosen(differentValue)
+          dispatcher.v.expectMsg(OverrodeInP2(helper.INSTANCE_ID))
         }
       }
     }
@@ -274,15 +325,16 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       val didntSent = List(3)
 
       def prepareActor(nameSuffix: String) = {
-        implicit val r @ (logger, comm, proposer) = helper.create(s"timeout_$nameSuffix", false)
+        implicit val r @ (logger, comm, proposer, dispatcher) = helper.create(s"timeout_$nameSuffix", false)
+        dispatcher.v.send(proposer, Start)
         helper.sendKvsGet(ourValue)
-        implicit val rid = helper.expectInstanceStarted(ourValue)
+        implicit val rid = helper.expectInstanceStarted()
         r :+ rid
       }
 
       "while waiting for 1Bs" - {
         "retransmit to those that didn't respond (and only those)" in {
-          implicit val (logger, comm: MockCommunicator, proposer, rid) = prepareActor("1b")
+          implicit val (logger, comm, proposer, _, rid) = prepareActor("1b")
           helper.sendP1BsFrom(sent, None)
 
           within (0.75*rt millis, 1.25*rt millis) {
@@ -293,15 +345,15 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
 
       "while waiting for vote result" - {
         def prepareActor1(name: String) = {
-          implicit val r @ (logger, comm, proposer, rid) = prepareActor(name)
+          implicit val r @ (logger, comm, proposer, dispatcher, rid) = prepareActor(name)
           helper.sendEmptyP1Bs()
           helper.expect2a()
-          helper.sendP2bHigherProposalNack(sent)
           r
         }
 
         "retransmit to those that didn't respond" in {
-          implicit val (_, comm: MockCommunicator, proposer, rid) = prepareActor1("2b")
+          implicit val (_, comm: MockCommunicator, proposer, dispatcher, rid) = prepareActor1("2b")
+          helper.sendP2bHigherProposalNack(sent)
 
           within (0.75*rt millis, 1.25*rt millis) {
             comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(AcceptRequest(rid, ourValue), nid)) :_*)
@@ -309,94 +361,11 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         }
 
         "abandon value if sufficiently long time elapses" in {
-          implicit val (logger: MockLogger, _, proposer, rid) = prepareActor1("instance")
+          implicit val (logger, _, proposer, dispatcher, rid) = prepareActor1("instance")
 
           within(0.75*INSTANCE_TIMEOUT millis, 1.25*INSTANCE_TIMEOUT millis) {
-            logger.v.fishForMessage() {
-              case TimeoutHit(TimeoutType.instance, _) => true
-              case _ => false
-            }
+            dispatcher.v.expectMsg(InstanceTimeout(helper.INSTANCE_ID))
           }
-        }
-      }
-    }
-
-    "multi-instance test" - {
-      val values = (1 until 5).map(x => KeyValue(x.toString, x))
-      val altValue = KeyValue("alt", 100)
-
-      "should be able to establish correct chain of values" - {
-
-        type TestCb = KeyValue => (ActorRef, MockCommunicator) => RoundIdentifier
-        def executeTest(name: String, tester: TestCb) = {
-          implicit val r @ (logger, comm, proposer) = helper.create(name, disableTimeouts = false)
-          values.zipWithIndex.foreach { case (v, idx) =>
-            log.info(s"$name: round $idx started")
-            val rid = tester(v)(proposer, comm)
-            logger.v.receiveWhile() {
-              case InstanceSuccessful(iid) if iid == rid.instanceId => true
-            }
-          }
-        }
-
-        "when starting with fresh instance" in {
-          executeTest("chain_optimistic", (v) => (p,c) => helper.successfulVoting(v)(p,c))
-        }
-
-        "when entered instance that must be continued" in {
-          executeTest("chain_pessimistic_1b_cont", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue)(p,c))
-        }
-
-        "when entered instance that's already in use" in {
-          executeTest("chain_pessimistic_1b", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue, byNack = true)(p,c))
-        }
-
-        "when competing instance won in phase II" in {
-          executeTest("chain_pessimistic_2b", (v) => (p,c) => helper.successfulVoting2bTrip(v, altValue)(p,c))
-        }
-      }
-
-      "should continue with request queue processing without prompting" - {
-        type TestCb = KeyValue => (ActorRef, MockCommunicator) => RoundIdentifier
-        def executeTest(name: String, tester: TestCb) = {
-          import scala.concurrent.duration._
-
-          implicit val (logger, comm, proposer) = helper.create(name, disableTimeouts = false)
-
-          // first send requests
-          values.foreach(helper.sendKvsGet)
-
-          // and only now start reponding to Paxos
-          val rids = values.map(v => {
-            log.info(s"new round")
-            tester(v)(proposer, comm)
-          })
-
-          // ensure communicator gets no more messages (no more rounds)
-          comm.v.expectNoMessage(1 second)
-
-          // and ensure that votings were actually successful
-          rids.foreach(rid => {
-            logger.v.fishForSpecificMessage() {
-              case InstanceSuccessful(iid) if iid == rid.instanceId => true
-            }
-          })
-        }
-
-        "in successful case" in {
-          executeTest("no_prompt_opt", (v) => (p, c) => helper.successfulVoting(v, sendValue = false)(p,c))
-        }
-
-        "when must continue other instance" in {
-          executeTest("no_prompt_1b_cont", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue, sendValue = false)(p,c))
-        }
-
-        "when rejected in 1b" in {
-          executeTest("no_prompt_1b", (v) => (p,c) => helper.successfulVoting1bTrip(v, altValue, byNack = true, sendValue = false)(p,c))
-        }
-
-        "when overridden in 2b" in {
-          executeTest("no_prompt_2b", (v) => (p,c) => helper.successfulVoting2bTrip(v, altValue, sendValue = false)(p,c))
         }
       }
     }
@@ -443,7 +412,5 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
       *
       *
       */
-
   }
-
 }

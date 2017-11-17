@@ -30,7 +30,7 @@ class Learner() extends Actor with ActorLogging {
   }
 
   def ready: Receive = {
-    case LearnerSubscribe() =>
+    case LearnerSubscribe =>
       subscribers += sender
       log.info("Learner:" + self + " @ Receive")
 
@@ -38,7 +38,6 @@ class Learner() extends Actor with ActorLogging {
       log.info("Learner:" + self + " @ Accepted")
       memory.put(key, (instanceId, value))
       subscribers.foreach {_ ! ValueLearned(instanceId, key, value)}
-
 
     case KvsGetRequest(key) =>
       log.info("Learner:" + self + " @ KvsGetRequest")

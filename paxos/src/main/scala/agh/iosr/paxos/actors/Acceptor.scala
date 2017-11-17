@@ -1,6 +1,5 @@
 package agh.iosr.paxos.actors
 
-import agh.iosr.paxos._
 import agh.iosr.paxos.messages.Messages._
 import agh.iosr.paxos.predef._
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
@@ -30,7 +29,6 @@ class Acceptor()
 
   def ready: Receive = {
     case ReceivedMessage(data, remoteId) =>
-
 
       data match {
         case Prepare(RoundIdentifier(instanceId, roundId)) =>

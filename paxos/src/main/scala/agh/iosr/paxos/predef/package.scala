@@ -29,4 +29,7 @@ package object predef {
   type IpToIdMap = immutable.Map[InetSocketAddress, NodeId]
 
   case class RoundIdentifier(instanceId: InstanceId, roundId: RoundId)
+
+  case class TimerConf(key: String, msInterval: Int, msg: Any)
+  case class RandomTimerConf(key: String, from: Int, to: Int, msg: Any)
 }

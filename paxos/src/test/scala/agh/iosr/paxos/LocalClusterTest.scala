@@ -43,7 +43,7 @@ class LocalClusterTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       /* we also subscribe to one of the learners (from real cluster) so that we are able to see ValueLearned */
       val nodeId = 1
       manager.getNodeActor(nodeId, "learner") match {
-        case Some(actorRef) => actorRef ! LearnerSubscribe()
+        case Some(actorRef) => actorRef ! LearnerSubscribe
         case None => throw ElementNotFound
       }
 

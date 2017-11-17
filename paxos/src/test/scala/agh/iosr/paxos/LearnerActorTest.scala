@@ -23,7 +23,7 @@ class LearnerActorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       val actor = system.actorOf(Props(new Learner()))
       testCommunicator.send(actor, Ready)
 
-      actor ! LearnerSubscribe()
+      actor ! LearnerSubscribe
 
       val instanceId = 3
       val key = "String"
@@ -77,7 +77,7 @@ class LearnerActorTest extends TestKit(ActorSystem("MySpec")) with ImplicitSende
       val actor = system.actorOf(Props(new Learner()))
       testCommunicator.send(actor, Ready)
 
-      actor ! LearnerSubscribe()
+      actor ! LearnerSubscribe
 
       val instanceId = 3
       val key = "String"

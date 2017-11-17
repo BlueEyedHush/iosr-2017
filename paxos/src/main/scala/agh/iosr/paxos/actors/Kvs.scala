@@ -9,14 +9,14 @@ import akka.actor.{Actor, ActorRef, Props, ActorLogging}
 import scala.collection.mutable
 
 object Kvs {
-  def props(learner: ActorRef, proposer: ActorRef): Props = Props(new Kvs(learner, proposer))
+  def props(learner: ActorRef, elector: ActorRef): Props = Props(new Kvs(learner, elector))
 }
 
-class Kvs(val learner: ActorRef, val proposer: ActorRef) extends Actor with ActorLogging{
+class Kvs(val learner: ActorRef, val elector: ActorRef) extends Actor with ActorLogging{
   private val requesters = mutable.Map[Key, util.LinkedList[ActorRef]]()
 
   override def receive = {
-    case m @ KvsSend(k ,v) => proposer ! m
+    case m @ KvsSend(k ,v) => elector ! m
       log.info("Kvs:" + self + " @ KvsSend")
 
     case m @ KvsGetRequest(k) =>
