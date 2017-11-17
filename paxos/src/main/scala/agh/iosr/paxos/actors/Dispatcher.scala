@@ -20,7 +20,7 @@ object Dispatcher {
   * We don't restart instances that timed out
   *
   */
-class Dispatcher(val comm: ActorRef, val learner: ActorRef) extends Actor with ActorLogging {
+class Dispatcher(val comm: ActorRef) extends Actor with ActorLogging {
   import Dispatcher._
   import Elector._
 
