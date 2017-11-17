@@ -2,6 +2,7 @@ package agh.iosr.paxos.actors
 import java.util
 
 import agh.iosr.paxos.messages.Messages._
+import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
 import agh.iosr.paxos.utils.TimersManager
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
@@ -150,6 +151,10 @@ class Elector(val dispatcher: ActorRef, val nodeId: NodeId, val nodeCount: NodeI
       requestQueue.add(KvsSend(key, value))
   }
 
+  val forwardPaxosMessages: Receive = {
+    case m: SendableMessage => dispatcher ! m
+    case m: ValueLearned => dispatcher ! m
+  }
 
   /**
     * + watching keepAlive,
@@ -164,7 +169,7 @@ class Elector(val dispatcher: ActorRef, val nodeId: NodeId, val nodeCount: NodeI
     requestQueue.forEach(rq => communicator ! SendUnicast(rq, currentLeader))
     requestQueue.clear()
 
-    LoggingReceive {
+    val handler: Receive = {
       case ReceivedMessage(KvsSend(key, value), _) =>
         communicator ! SendUnicast(KvsSend(key, value), currentLeader)
 
@@ -197,6 +202,8 @@ class Elector(val dispatcher: ActorRef, val nodeId: NodeId, val nodeCount: NodeI
       case FollowerTimeout =>
         context.become(candidate(currentTerm + 1))
     }
+
+    LoggingReceive(handler orElse forwardPaxosMessages)
   }
 
 
@@ -212,7 +219,8 @@ class Elector(val dispatcher: ActorRef, val nodeId: NodeId, val nodeCount: NodeI
     timerManager.restartTimerOnce(candidateTimeoutConf)
     val votesGained: mutable.Set[NodeId] = mutable.Set.empty
     communicator ! SendMulticast(VoteForMe(currentTerm))
-    LoggingReceive {
+
+    val handler: Receive = {
       case ReceivedMessage(KvsSend(key, value), _) =>
         requestQueue.add(KvsSend(key, value))
 
@@ -238,6 +246,8 @@ class Elector(val dispatcher: ActorRef, val nodeId: NodeId, val nodeCount: NodeI
       case CandidateTimeout =>
         context.become(candidate(currentTerm + 1))
     }
+
+    LoggingReceive(handler orElse forwardPaxosMessages)
   }
 
 
@@ -256,7 +266,7 @@ class Elector(val dispatcher: ActorRef, val nodeId: NodeId, val nodeCount: NodeI
     requestQueue.clear()
     dispatcher ! BecomingLeader
 
-    LoggingReceive {
+    val handler: Receive = {
       case ReceivedMessage(KvsSend(key, value), _) =>
         dispatcher ! KvsSend(key, value)
 
@@ -288,5 +298,7 @@ class Elector(val dispatcher: ActorRef, val nodeId: NodeId, val nodeCount: NodeI
         timerManager.stopTimer(keepAliveConf)
         context.become(follower(instanceId, _voted = true))
     }
+
+    LoggingReceive(handler orElse forwardPaxosMessages)
   }
 }

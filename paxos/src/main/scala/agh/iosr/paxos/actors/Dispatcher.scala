@@ -31,21 +31,12 @@ class Dispatcher(val comm: ActorRef, val learner: ActorRef, val nodeId: NodeId, 
   import Dispatcher._
   import Elector._
 
-  /* @todo marking as terminated + set of non-terminated instances */
-
   private var currentBatchOffset: InstanceId = NULL_INSTANCE_ID
   private var nextFreeInPool: InstanceId = NULL_INSTANCE_ID
   private val instanceMap = mutable.Map[InstanceId, (KeyValue, ActorRef)]()
   private var freePool: Array[ActorRef] = _
 
   override def receive = follower
-
-  // @todo MessageReceived message passthrough (comining functions?) - not done in elector
-  // @todo passthrough must also include valuelearned
-  // @todo must be ready to handle signals send from paxos instances (including retry)
-  // @todo sent start to actor
-  // @todo proposers who never received value are going to hang...
-  // @todo keep tracck of what value send to whom; unused instances in Set, used go to map, terminate all unsued on becoming leader
 
   def tryForward(iid: InstanceId, m: Any) = {
     /* forward message to correct instance (if such an instance has been registered) */
