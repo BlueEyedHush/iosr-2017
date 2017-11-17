@@ -71,7 +71,7 @@ object ExecutionTracing {
   case class RequestQueued(req: KeyValue, phase: String = "") extends LogMessage
 
   /* phase 2 */
-  case class InitiatingVoting(ri: RoundIdentifier, proposal: KeyValue, ourV: KeyValue) extends LogMessage
+  case class InitiatingVoting(ri: RoundIdentifier, proposal: KeyValue, ourV: Option[KeyValue]) extends LogMessage
   case class InstanceSuccessful(instance: InstanceId) extends LogMessage
   case class VotingUnsuccessful(instance: InstanceId, value: KeyValue) extends LogMessage
   case class TimeoutHit(which: TimeoutType.Value, comment: String = "") extends LogMessage
@@ -108,12 +108,11 @@ class Proposer(val dispatcher: ActorRef,
   private var nacks: mutable.Set[NodeId] = mutable.Set()
 
   private def initiateVoting(v: KeyValue) = {
-    assert(ourValue.isDefined)
     assert(votedValue.isEmpty)
     votedValue = Some(v)
 
     communicator ! SendMulticast(AcceptRequest(currentRoundId, v))
-    logg(InitiatingVoting(currentRoundId, v, ourValue.get))
+    logg(InitiatingVoting(currentRoundId, v, ourValue))
 
     context.become(phase2)
     logg(ContextChange("phase2"))

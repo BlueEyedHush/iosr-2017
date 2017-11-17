@@ -313,7 +313,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         }
 
         "when different value is chosen without prior rejections" in {
-          implicit val (logger, comm, proposer, dispatcher, rid) = prepareActor("accept")
+          implicit val (logger, comm, proposer, dispatcher, rid) = prepareActor("different_value")
 
           helper.sendValueChosen(differentValue)
           dispatcher.v.expectMsg(OverrodeInP2(helper.INSTANCE_ID))
@@ -352,12 +352,12 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
           implicit val r @ (logger, comm, proposer, dispatcher, rid) = prepareActor(name)
           helper.sendEmptyP1Bs()
           helper.expect2a()
-          helper.sendP2bHigherProposalNack(sent)
           r
         }
 
         "retransmit to those that didn't respond" in {
           implicit val (_, comm: MockCommunicator, proposer, dispatcher, rid) = prepareActor1("2b")
+          helper.sendP2bHigherProposalNack(sent)
 
           within (0.75*rt millis, 1.25*rt millis) {
             comm.v.expectMsgAllOf(didntSent.map(nid => SendUnicast(AcceptRequest(rid, ourValue), nid)) :_*)
@@ -365,7 +365,7 @@ class ProposerTest extends TestKit(ActorSystem("MySpec"))
         }
 
         "abandon value if sufficiently long time elapses" in {
-          implicit val (logger: MockLogger, _, proposer, dispatcher, rid) = prepareActor1("instance")
+          implicit val (logger, _, proposer, dispatcher, rid) = prepareActor1("instance")
 
           within(0.75*INSTANCE_TIMEOUT millis, 1.25*INSTANCE_TIMEOUT millis) {
             dispatcher.v.expectMsg(InstanceTimeout(helper.INSTANCE_ID))
