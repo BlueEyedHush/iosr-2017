@@ -1,15 +1,11 @@
 package agh.iosr.paxos.utils
 
-import agh.iosr.paxos.actors._
-import agh.iosr.paxos.predef.{IdToIpMap, NodeId}
-import akka.actor.{ActorRef, ActorSystem, Props}
-
-import scala.collection.mutable
+import akka.actor.{ActorRef, ActorSystem}
 
 case class NodeEntry(system: ActorSystem, proposer: ActorRef, acceptor: ActorRef, learner: ActorRef, kvStore: ActorRef, communicator: ActorRef)
 
 class ClusterSetupManager {
-
+/*
   var nodes: mutable.Map[NodeId, NodeEntry] = mutable.Map.empty
 
   def setup(idToIpMap: IdToIpMap, myIp: java.net.InetSocketAddress): Int = {
@@ -60,5 +56,5 @@ class ClusterSetupManager {
         }
       case _ => None
     }
-  }
+  }*/
 }

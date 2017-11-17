@@ -1,17 +1,8 @@
 package agh.iosr.paxos.client
 
-import agh.iosr.paxos.messages.Messages._
-import agh.iosr.paxos.utils._
-import akka.actor._
-import com.typesafe.config.{Config, ConfigFactory}
-
-import scala.concurrent.Await
-import scala.concurrent.duration._
-import scala.util.Random
-
 
 object LocalClient {
-  def main(args: Array[String]) {
+ /* def main(args: Array[String]) {
     val sleepTime = 1000 //in milis
     val valuesPerKey = 0.5 // It takes from 0 to 1, if 0 then one key will have many values; if valuesPerKey = 1, then almost every key will have one value
     implicit val config: Config = ConfigFactory.load()
@@ -46,5 +37,5 @@ object LocalClient {
     }
 
     Await.result(system.whenTerminated, Duration.Inf)
-  }
+  }*/
 }

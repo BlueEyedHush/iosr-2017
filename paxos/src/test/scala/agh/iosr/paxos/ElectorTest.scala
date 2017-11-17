@@ -1,15 +1,12 @@
 package agh.iosr.paxos
 
-import agh.iosr.paxos.actors.ExecutionTracing.LogMessage
-import agh.iosr.paxos.actors._
 import agh.iosr.paxos.actors.Elector._
+import agh.iosr.paxos.actors._
 import agh.iosr.paxos.messages.Messages._
-import agh.iosr.paxos.messages.SendableMessage
 import agh.iosr.paxos.predef._
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.ActorSystem
 import akka.testkit.{TestKit, TestProbe}
 import org.scalatest._
-import org.slf4j.LoggerFactory
 
 case class MockDispatcher(val v: TestProbe) extends AnyVal
 
